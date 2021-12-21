@@ -1,0 +1,86 @@
+# Figure5A generation
+
+```{r}
+library(tidyr)
+library(ggplot2)
+```
+
+```{r}
+heatmapdata=readxl::read_excel('hotspot_calculation.xlsx')
+```
+
+```{r}
+gene_ordering=setNames(readxl::read_excel('gene categories.xlsx','Gene categories')[,c('HGNC','Group Name')],c('gene','Pathway'))
+pathway_ordering=readxl::read_excel('gene categories.xlsx','Preferred ordering')$`Group Name`
+gene_ordering$Pathway = factor(gene_ordering$Pathway,pathway_ordering)
+```
+
+```{r}
+cell_type_ordering="
+group#cell
+Human intestine#enterocyte of epithelium of large intestine
+Human intestine#large intestine goblet cell
+Human intestine#paneth cell of epithelium of large intestine
+Human intestine#transit amplifying cell of large intestine
+Mouse intestine#Enterocytes
+Mouse intestine#Goblet cells
+Mouse intestine#Paneth cells
+Human intestine#fibroblast
+Human kidney#kidney epithelial cell
+Mouse kidney#Distal tubule cells
+Mouse kidney#Endothelial cell
+" %>% (function(d) { read.delim(text=d,header=T,sep="#") })
+```
+
+```{r}
+heatmapdata$cell=factor(as.character(heatmapdata$cell),cell_type_ordering$cell)
+```
+
+```{r}
+toplot=heatmapdata[heatmapdata$`above cutoff.classification`=="expressed" &
+                   heatmapdata$`bulk %ile` >= 0.1 &
+                   !is.na(heatmapdata$cell),
+                  ]
+toplot=toplot[complete.cases(toplot[,'cell']),]
+toplot=merge(toplot,cell_type_ordering,by='cell')
+toplot=merge(toplot,gene_ordering,by.x='gene ortholog',by.y='gene')
+toplot$group = factor(toplot$group,unique(cell_type_ordering$group))
+toplot$`gene ortholog` = factor(toplot$`gene ortholog`, sort(unique(toplot$`gene ortholog`)))
+```
+
+```{r}
+colormaker = function(values) {
+  grad_values = values
+  grad_values[grad_values >= 50] = NA
+  rescaled=scales::rescale(grad_values)
+  colors = scale_color_gradient(low="#56B1F7",high="#0065B8")$palette(rescaled)
+  colors[values==50] = "orange"
+  colors[values==100] = "red"
+  colors
+}
+
+toplot$colorval = colormaker(toplot$heatmap_value)
+```
+
+# Figure5A
+
+```{r hotspot_figure,fig.width=8,fig.height=20}
+ggplot(toplot)+
+  geom_point(aes(x=cell,y=`gene ortholog`,color=colorval,size=clr))+
+  scale_color_identity(name="Hotspot criteria",guide="legend",labels = c(paste("CLR =",seq(-0.5,5,by=0.5)),"Expressed fewer than < 66% ","Expressed fewer than < 33%"), breaks = colormaker(c(seq(-0.5,5,by=0.5),50,100))  )+
+  scale_x_discrete(labels=function(x) stringr::str_to_title(x))+
+  scale_size_binned(name = "CLR")+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  facet_grid(Pathway~group, switch="both", scales = "free", space = "free") +
+    theme(panel.spacing.x = unit(0,"lines"),
+          panel.spacing.y = unit(1,"lines"),
+         strip.background.x = element_rect(size=1),
+         strip.placement = "outside",
+         strip.text.x = element_text(size = 12, color = "black", face = "bold"),
+         strip.background.y = element_blank(),
+         strip.text.y = element_text(size=5),
+         axis.title.x = element_blank(),
+         axis.title.y = element_blank()
+    )
+```

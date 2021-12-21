@@ -1,0 +1,46 @@
+```{r}
+if(!file.exists("alldata_human_pseudopresence.Rds")){
+  tsv = list.files(path='/tsv/', pattern='.gz')
+  raw_alldata = sapply(paste('/tsv/', tsv, sep=''), function(x) { read.delim(gzfile(x), check.names = F) })
+}
+```
+
+```{r}
+if ('raw_alldata' %in% ls()) {
+  fixed = sapply(1:length(raw_alldata),function(x) {
+    
+    genes <- raw_alldata[[x]]$gene
+    pseudopresence.mat <- as.matrix.data.frame(raw_alldata[[x]][,3:ncol(raw_alldata[[x]])])
+    rownames(pseudopresence.mat) <- genes
+    
+    newids <- colnames(pseudopresence.mat)
+    tissue = gsub('^TS_(.*)_pseudopresence.*$', '\\1', basename(tsv[[x]]))
+    newids = gsub(paste0(tissue,'_'), '', x = newids)
+    newids = paste(tissue,newids,sep=':')
+    
+    colnames(pseudopresence.mat) <- newids
+    
+    pseudopresence.mat <- t.default(pseudopresence.mat)
+    pseudopresence.mat
+  })
+}
+```
+
+```{r}
+if ('fixed' %in% ls()) {
+  alldata = do.call(function(...) {
+    tmp <- plyr::rbind.fill.matrix(...)
+    cols = dimnames(tmp)[[2]]
+    rows <- sapply(fixed, function(i) {
+      dimnames(i)[[1]]
+    })
+    dimnames(tmp) = list(unlist(rows),cols)
+    return(tmp)
+
+  }, fixed)
+  rm(fixed)
+  saveRDS(alldata,'alldata_human_pseudopresence.Rds')
+  rm(alldata)
+}
+```
+

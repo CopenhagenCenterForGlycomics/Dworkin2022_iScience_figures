@@ -1,0 +1,72 @@
+
+# global gene expression analysis
+
+# loading libraries
+
+```{r}
+require(dplyr)
+require(ggrepel)
+require(ggplot2)
+```
+
+# loading tabula sapiens data
+
+```{r}
+TS_pseudobulk <- readRDS('glycogene_pseudobulkpresence.Rds')[
+  ,c('cluster','gene','cellnum','pseudobulk','status5E-03')]
+```
+
+```{r}
+PM_pseudobulk <- readRDS('glycogene_mouse_panglaodb_pseudobulkpresence.Rds')[
+  ,c('cluster','gene','cellnum','pseudobulk','status5E-03')]
+```
+
+# FUNCTION
+
+```{r}
+source('pvalue_functions.R')
+```
+
+```{r}
+#function for bucketing expressed/unpredictable/unexpressed genes
+prediction.df_wrapper
+```
+
+# bucketing expression predictions
+
+```{r}
+TS_global_prediction.df <- prediction.df_wrapper(TS_pseudobulk, p_cutoff = 'status5E-03')$global_prediction.df
+PM_global_prediction.df <- prediction.df_wrapper(PM_pseudobulk, p_cutoff = 'status5E-03')$global_prediction.df
+```
+
+# percent of GTs predicted in some percent of cells
+
+```{r} 
+data.df = data.frame(pct_cell = rep(seq(0.00, 1, 0.01), 3))
+data.df = within(data.df, {
+  pct_gt = c(
+    sapply(pct_cell[1:101], function(pct) { 
+      sum(TS_global_prediction.df$percent_expressed >= pct)/length(TS_global_prediction.df$gene) }),
+    sapply(pct_cell[1:101], function(pct) { 
+      sum(PM_global_prediction.df$percent_expressed >= pct)/length(PM_global_prediction.df$gene) }))
+  dataset = rep(c('TS', 'PM'), each = 101)
+})
+```
+
+# SupplementaryFigure5B
+
+```{r, fig.width=7, fig.height=7} 
+
+qplot(
+  data = data.df,
+  x = pct_cell,
+  y = pct_gt,
+  color = dataset,
+  geom = 'line',
+  main = 'percent of GTs predicted as expressed in at least some percent of cells',
+  xlab = '% of cells',
+  ylab = '% of genes') +
+  scale_x_continuous(breaks = seq(0,1,0.1)) +
+  scale_y_continuous(breaks = seq(0,1,0.1)) +
+  theme_bw()
+```

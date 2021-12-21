@@ -1,0 +1,137 @@
+
+```{r load, eval=!file.exists('glycogene_pseudobulkpresence.Rds')}
+filepath.char <- 'alldata_pseudobulkpresence.Rds'
+gene_expression.df <- readRDS(filepath.char)
+cutoff.int <- attributes(gene_expression.df)$cutoff.int
+```
+
+```{r, eval=!file.exists('glycogene_pseudobulkpresence.Rds')}
+# filtering for clusters of adequate size, annotation, and expression ----
+source('filtering.R')
+gene_expression.df <- filtering(gene_expression.df, taxon_id = '9606', glycogenes_only = T, other_genes = 'DAG1', gte200 = F, annotated = T)
+saveRDS(gene_expression.df, 'glycogene_pseudobulkpresence.Rds')
+remove(gene_expression.df)
+```
+
+```{r}
+gene_expression.df <- readRDS('glycogene_pseudobulkpresence.Rds')
+gene_expression.df <- gene_expression.df[with(gene_expression.df, cellnum >= 200),]
+cutoff.int <- if(!exists('cutoff.int')) { 0.005376245 } else { cutoff.int }
+```
+
+# FUNCTION
+
+```{r}
+source('pvalue_functions.R')
+```
+
+```{r}
+prediction.df_wrapper
+```
+
+```{r}
+# explicitly looking at global prediction status with cluster size ----
+cluster_prediction.df <- prediction.df_wrapper(gene_expression.df, p_cutoff = 'status5E-03')[[2]]
+```
+
+```{r}
+# explicitly looking at global prediction status with genes ----
+global_prediction.df <- prediction.df_wrapper(gene_expression.df, p_cutoff = 'status5E-03')[[3]]
+```
+
+## SupplementaryFigure5A
+
+```{r hist12, fig.width=7, fig.height=7}
+## histogram of genes expressed in percent of total clusters (stacked by percent unexpressed)
+hist12 <- function(pvalue, minsize = 200, tiss = NA) {
+  
+  require(ggplot2)
+  
+  overview <- if(is.na(tiss)) { 'global' } else { 'tissue' }
+  switch(
+    overview,
+    'global' = {
+      plot.df <- 
+        global_prediction.df[with(
+          global_prediction.df, 
+          status == pvalue & 
+            minclust == minsize),] 
+      label.char <- paste0('number of genes expressed in percent of total clusters\nn = ', with(gene_expression.df, length(unique(cluster[cellnum >= 200]))))
+      subtitle.char <- paste0('p-value<=', gsub('status', '', pvalue), '\ncluster>=200')
+    },
+    'tissue' =  { 
+      plot.df <- 
+        tissue_prediction.df[with(
+          tissue_prediction.df, 
+          status == pvalue & 
+            minclust == minsize &
+            tissue == tiss),] 
+      label.char <- paste0('number of genes expressed in percent of total clusters\nn = ', unique(plot.df$nclust))
+      subtitle.char <- paste0('tissue=', tiss, '\np-value<=', gsub('status', '', pvalue), '\ncluster>=200')
+    })
+  
+  ggplot.obj <-
+    ggplot(plot.df) + 
+    geom_histogram(
+      aes(x = percent_expressed, 
+          fill = bucket_unexpressed_0.1,
+          group = bucket_unexpressed_0.1),
+      breaks = seq(-0.05, 1.05, 0.1)) +
+    scale_fill_manual(
+      values = setNames(
+        c('grey', rev(RColorBrewer::brewer.pal(11, 'Spectral')), '#40366f'),
+        paste0(c(0,5,10,20,30,40,50,60,70,80,90,95,100),'%')),
+      guide = guide_legend(
+        title = 'percent\nunexpressed',
+        reverse = T)) +
+    scale_x_continuous(breaks = seq(0,1,0.1)) + 
+    scale_y_continuous(breaks = seq(0,100,5)) +
+    expand_limits(x = c(0,1)) +
+    theme_bw() +
+    theme(axis.text.x = element_text(colour = rev(RColorBrewer::brewer.pal(11, 'Spectral')))) +
+    ggtitle(
+      label = label.char,
+      subtitle = subtitle.char)
+  
+  plot.df$x <- cut(
+    plot.df$percent_expressed,
+    breaks = seq(-0.05, 1.05, 0.1),
+    labels = seq(0,1,0.1))
+  plot.df$fill <- setNames(
+    c('grey', rev(RColorBrewer::brewer.pal(11, 'Spectral')), '#40366f'), 
+    paste0(c(0,5,10,20,30,40,50,60,70,80,90,95,100),'%'))[
+      plot.df$bucket_unexpressed_0.1]
+  
+  ggplot.df <- ggplot_build(ggplot.obj)$data[[1]]
+  text.df <- merge(ggplot.df, plot.df)[,c('x','y','ymin','ymax','fill','gene')]
+  
+  text.df <- do.call(
+    rbind.data.frame, Filter(
+      Negate(is.null), lapply(
+        split(text.df, list(text.df$x, text.df$fill)), 
+        function(text_subset.df) { 
+          if(nrow(text_subset.df) == 0) { return(NULL) 
+          } else { 
+            text_subset.df <- text_subset.df[order(text_subset.df$gene, decreasing = T),]
+            text_subset.df$y <- seq(
+              unique(text_subset.df$ymin) + 0.5, 
+              unique(text_subset.df$ymax) - 0.5, 
+              length.out = nrow(text_subset.df)) 
+            return(text_subset.df) } })))[, c('x','y','gene')]
+  
+  ggplot.obj <-
+    ggplot.obj + 
+    geom_text(
+      data = text.df, 
+      aes(x = x, y = y, label = gene), 
+      size = 1) + 
+    ylab('# of genes')
+  
+  return(ggplot.obj)
+  
+}
+```
+
+```{r}
+hist12('status5E-03')
+```

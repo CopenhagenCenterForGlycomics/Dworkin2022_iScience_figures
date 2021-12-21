@@ -1,0 +1,44 @@
+
+```{r}
+if(!file.exists("alldata_mouse.Rds")){
+  rds = list.files(path='/rds/', pattern='.Rds')
+  raw_alldata = sapply(paste('/rds/',rds,sep=''),readRDS)
+}
+```
+
+```{r}
+if ('raw_alldata' %in% ls()) {
+fixed = sapply(1:length(raw_alldata),function(x) {
+  srs_names = sapply( sapply(rds,strsplit,'_'), function(x) grep('^SR',x,value=T) ,simplify = F)
+  tissue = attributes(raw_alldata[[x]])$tissue
+  newids = paste(srs_names[[x]][2],tissue,dimnames(raw_alldata[[x]])[[1]],sep=':')
+  if (length(newids) != length(attributes(raw_alldata[[x]])$clustersize)) {
+    browser()
+  }
+  newids = paste(ifelse(attributes(raw_alldata[[x]])$clustersize < 200, 'SMALL_','' ),newids,sep='')
+  dimnames(raw_alldata[[x]]) <- list(newids, dimnames(raw_alldata[[x]])[[2]])
+  attributes(raw_alldata[[x]])$sizes <- setNames(attributes(raw_alldata[[x]])$clustersize,rownames(raw_alldata[[x]]))
+  raw_alldata[[x]]
+})
+}
+```
+
+```{r}
+if ('fixed' %in% ls()) {
+  alldata = do.call(function(...) {
+    tmp <- plyr::rbind.fill.matrix(...)
+    cols = dimnames(tmp)[[2]]
+    rows <- sapply(fixed, function(i) {
+      dimnames(i)[[1]]
+    })
+    dimnames(tmp) = list(unlist(rows),cols)
+    return(tmp)
+
+  }, fixed)
+  sizes = do.call(c,lapply(fixed,function(set){ attributes(set)$sizes }))
+  attributes(alldata)$clustersize = sizes
+  rm(fixed)
+  saveRDS(alldata,'alldata_mouse.Rds')
+  rm(alldata)
+}
+```

@@ -1,0 +1,84 @@
+# Figure 3B generation
+
+# loading libraries
+
+```{r}
+require(dplyr)
+require(ggrepel)
+require(ggplot2)
+```
+
+# loading tabula sapiens data
+
+```{r}
+TS_pseudobulk <- readRDS('glycogene_pseudobulkpresence.Rds')[
+  ,c('cluster','gene','cellnum','pseudobulk','status5E-03')]
+```
+
+# FUNCTION
+
+```{r}
+source('pvalue_functions.R')
+```
+
+```{r}
+# function for bucketing expressed/unpredictable/unexpressed genes
+prediction.df_wrapper
+```
+
+# bucketing expression predictions
+
+```{r}
+TS_global_prediction.df <- prediction.df_wrapper(TS_pseudobulk, p_cutoff = 'status5E-03')$global_prediction.df
+```
+
+# percent set of genes subsets (Core extension, N-linked branching, Elongation, Capping) expressed in some percent of cells
+
+```{r}
+data.df <- 
+  merge(
+    TS_global_prediction.df[,c('gene','percent_expressed', "bucket_expressed_0.1")],
+    data.frame(readxl::read_xlsx('data/xlsx/Glycoenzymes.xlsx'))[,c('HGNC','Group')],
+    by.x = 'gene', by.y = 'HGNC')
+
+data.df <- unique(data.df)
+data.df$Group[with(data.df, grepl('^GALNT', gene))] <- 'GALNT'
+data.df$Group[with(data.df, which(gene %in% c('GCNT3','GCNT4','FUT8')))] <- 'Core extension'
+data.df$Group[with(data.df, which(Group == 'Core extension repeat'))] <- 'Core extension'
+data.df$Group[with(data.df, which(Group == 'Branching'))] <- 'N-linked branching'
+data.df$Group[with(data.df, which(Group == 'Extension'))] <- 'Elongation'
+data.df$Group[with(data.df, which(Group == 'Capping Sulfo'))] <- 'Capping'
+data.df <- subset(data.df, Group %in% c('GALNT','Initiation','Core extension','N-linked branching','Elongation','Capping'))
+```
+
+# Figure3B
+
+```{r, fig.width=7, fig.height=7}
+ggplot(
+  data = data.df %>% mutate(
+    Group = factor(Group, levels = rev(
+      c("Initiation","Core extension","Elongation","Capping","N-linked branching","GALNT"))))) + 
+  geom_area(
+    data = . %>% filter(
+      !grepl("GALNT|linked", Group)), 
+    aes(x = percent_expressed.y, fill = Group), 
+    stat = "bin", 
+    binwidth = 0.2) + 
+  geom_text_repel(
+    data= . %>% filter(
+      grepl("^GALNT|^MGAT",gene)), 
+    aes(x = percent_expressed.y, y = 70, label = gene),
+    size = 3,
+    max.overlaps = 10) +
+  geom_point(
+    data= . %>% filter(
+      grepl("^GALNT|^MGAT",gene)),
+    aes(x = percent_expressed.y, y = 70), 
+    size = 1) +
+  xlab('% of cells with gene expression') +
+  ylab('# of genes expressed') + 
+  scale_x_continuous(breaks = seq(0,1,0.1)) +
+  scale_y_continuous(breaks = seq(0,70,5)) +
+  theme_minimal() +
+  theme(legend.position="none")
+```

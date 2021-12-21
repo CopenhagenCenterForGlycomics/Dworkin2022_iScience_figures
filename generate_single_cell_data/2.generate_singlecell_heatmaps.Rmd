@@ -1,0 +1,242 @@
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(compositions)
+library(Matrix)
+```
+
+```{r include=FALSE, eval=file.exists('alldata_clean_human_clr_sparse.Rds')}
+alldata_clean_human_clr = readRDS('alldata_clean_human_clr_sparse.Rds')
+```
+
+```{r include=FALSE}
+glycogenes=read.delim('glycogenes.tsv',header=F)$V1
+full_clr = cbind(subset(reshape2::melt(as.matrix(alldata_clean_human_clr[,intersect(glycogenes,colnames(alldata_clean_human_clr))])),value != 0),data='human')
+full_clr$Var2 = as.character(full_clr$Var2)
+full_clr$tissue_cell = stringr::str_replace(stringr::str_replace(full_clr$Var1,'^SR[^:]+:',''),'_cluster.*','')
+full_clr$cell = stringr::str_replace( full_clr$tissue_cell,'.*:','')
+rm(human_melt)
+```
+
+```{r cache=F, include=FALSE}
+clrs_by_cell =  full_clr %>% group_by(Var2,cell,data) %>% summarise( mean_clr = mean(value) )
+clrs_by_cell_tissue = full_clr %>% group_by(Var2,tissue_cell,data) %>% summarise( mean_clr = mean(value) )
+```
+
+```{r}
+glycogenes = read.delim('glycogenes.tsv',header=F)$V1
+
+calculate_expressed_ratio = function(pseudobulks) {
+  results = apply(pseudobulks[, intersect(glycogenes,colnames(pseudobulks)) ],2,function(x) sum(is_expressed(x),na.rm=T)/nrow(pseudobulks) )
+  results
+}
+```
+
+```{r include=F,cache=F}
+clean_data = function(alldata) {
+cleaned = alldata[!grepl('SMALL|Unknown',rownames(alldata)),]
+attributes(cleaned)$clustersize = attributes(alldata)$clustersize
+colnames(cleaned) = recode(colnames(cleaned), TMEM5='RXYLT1',TMEM246='PGAP4',KDELC1='POGLUT2',KDELC2='POGLUT3')
+cleaned
+}
+```
+
+```{r}
+alldata=list()
+alldata_clean_human = clean_data(readRDS('alldata_human.Rds'))
+attributes(alldata)$clustersize = c(attributes(alldata_clean_human)$clustersize)
+```
+
+```{r include=FALSE}
+compute_pvalue <- function(pseudobulk, threshold) {
+  
+  n   <- 7 # chosen based on the number of pseudobulk sizes that model is fit to
+  ts  <- (cutoff.int - pseudobulk)/(threshold/sqrt(n)) 
+  p   <- 2*pt(-abs(ts), n-1)
+  
+  return(p)
+  
+}
+  
+expression_status_call <- function(threshold,pseudobulk) {
+  if (is.na(pseudobulk)) {
+    return("unexpressed")
+  }
+  if (pseudobulk == 0) {
+    return("unexpressed")
+  }
+  
+  expression_status_call_raw(threshold,pseudobulk)
+}
+
+expression_status_call_raw <- function(threshold, pseudobulk) {
+  
+  expression <- pseudobulk > cutoff.int
+  pvalue     <- compute_pvalue(pseudobulk, threshold)
+  if (is.na(expression)) {
+    return('unexpressed')
+  }
+  status <- if(expression) { 'expressed' } else { 'unexpressed' }
+  status <- if(pvalue > 5E-03) { 'unpredictable' } else { status }
+  
+  return(status)
+}
+
+is_expressed <- function(pseudobulks) {
+  cells = names(pseudobulks)
+  expressed = sapply(cells, function(cell) { expression_status_call( attributes(alldata)$thresholds[cell], pseudobulks[cell] ) })
+  ifelse(expressed == 'expressed', TRUE, ifelse(expressed == 'unexpressed',FALSE,NA))
+}
+```
+
+```{r}
+expression_model.lm <- readRDS('lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds')
+cutoff.int <- mean(expression_model.lm$xy.df$y[1:7]) 
+
+compute_threshold <- function(ncells) {
+  
+  s <-
+    stats::predict(
+      expression_model.lm$model2.lm,
+      newdata = data.frame(x = ncells),
+      se.fit = TRUE,
+      level = 0.95,
+      interval = "confidence")$fit[,'fit']
+  
+  return(s)
+  
+}
+
+attributes(alldata)$thresholds = sapply(attributes(alldata)$clustersize,compute_threshold)
+```
+
+```{r include=FALSE}
+required_genes=c('DPAGT1','ALG2')
+passing_cells = apply(apply(alldata_clean_human[,required_genes],2,is_expressed) ,1,all)
+passing_cells = passing_cells & apply(apply(alldata_clean_human[,c('ALG13','ALG14')],2,is_expressed),1,any)
+alldata_clean_human = alldata_clean_human[which(passing_cells),]
+```
+
+```{r}
+human_percent = calculate_expressed_ratio(alldata_clean_human)
+l = list(human=human_percent)
+gene_percentages = as.data.frame(t(do.call(rbind, lapply(l, function(x) x[match(names(l[[1]]), names(x))]))))
+gene_percentages = reshape2::melt(cbind(gene=rownames(gene_percentages),gene_percentages),variable='data')
+rm(l)
+```
+
+```{r}
+high_expression_cell_tissues = subset(clrs_by_cell_tissue,mean_clr > 2) %>% group_by(data,Var2) %>% summarise( count=length(unique(tissue_cell))) %>% rename( gene=Var2 )
+```
+
+```{r}
+high_clr_expression_heatmap_data = merge(high_expression_cell_tissues %>% rename(high_clr_count=count),gene_percentages %>% rename(percentage=value),by=c('gene','data'),suffixes = c('high_clr_count','percentage'),all.y=T) %>% tidyr::replace_na(list(high_clr_count=0))
+```
+
+```{r}
+non_stable_cell_tissues = subset(clrs_by_cell_tissue,mean_clr > 1) %>% group_by(data,Var2) %>% summarise( count=length(unique(tissue_cell))) %>% rename( gene=Var2 )
+```
+
+```{r}
+non_stable_expression_heatmap_data = merge(non_stable_cell_tissues %>% rename(non_stable_count=count),gene_percentages %>% rename(percentage=value),by=c('gene','data'),suffixes = c('non_stable_count','percentage'),all.y=T) %>% tidyr::replace_na(list(non_stable_count=0))
+```
+
+```{r}
+desat_lookup = c('#E40608'='#E4D0D0','#FF7F00'='#FFF2E6','#0065B8'='#B3E4FF','#FF66FF'='#FFFFFF')
+
+desat <- function(cols, sat=0.5) {
+  if (is.na(sat)) {
+    return(cols)
+  }
+  if (sat == -1) {
+    return(desat_lookup[cols])
+  }
+  X <- diag(c(1, sat, 1)) %*% rgb2hsv(col2rgb(cols))
+  hsv(X[1,], X[2,], X[3,])
+}
+```
+
+```{r}
+generate_colours = function(values) {
+  fraction_cutoffs = c(0,1/3,2/3,Inf)
+  all_levels = levels(cut(fraction_cutoffs,fraction_cutoffs))
+  cuts = cut(values,fraction_cutoffs)
+  binned_colours = setNames(c('#E40608','#FF7F00','#0065B8'),levels(cuts))
+  result = binned_colours[cuts] %>% tidyr::replace_na("#FF66FF")
+  names(result) = names(result) %>% tidyr::replace_na("0")
+  result
+}
+generate_saturation = function(colors,values,maximum=max(values)) {
+  step=ceiling((maximum/3)/10)*10
+  high_expressed_breaks = c( 0, seq(0,step*floor(maximum / step),by=step)[-1], Inf )
+  all_levels = levels(cut(high_expressed_breaks,high_expressed_breaks))
+  cuts = cut(values,high_expressed_breaks)
+  saturation_values = setNames(scales::rescale(1:length(levels(cuts)),to=c(0.3,1)),levels(cuts))[cuts] %>% tidyr::replace_na(-1)
+  Vectorize(desat)(colors,saturation_values)
+}
+```
+
+```{r}
+output_colours_base = (high_clr_expression_heatmap_data %>% filter(data=='human'))$percentage %>% generate_colours
+output_colours = generate_saturation(output_colours_base,(high_clr_expression_heatmap_data %>% filter(data=='human'))$high_clr_count,56)
+heatmap_data_high_clr = data.frame(hgnc=(high_clr_expression_heatmap_data %>% filter(data=='human'))$gene,base_color=output_colours_base,color=output_colours)
+```
+
+```{r}
+output_colours_base = (non_stable_expression_heatmap_data %>% filter(data=='human'))$percentage %>% generate_colours
+output_colours = generate_saturation(output_colours_base,(non_stable_expression_heatmap_data %>% filter(data=='human'))$non_stable_count,56)
+heatmap_data_non_stable = data.frame(hgnc=(non_stable_expression_heatmap_data %>% filter(data=='human'))$gene,base_color=output_colours_base,color=output_colours)
+```
+
+```{r sc_heatmap}
+knoter::excel(sc_heatmap_high_clr=heatmap_data_high_clr,raw_data_high_clr=high_clr_expression_heatmap_data, sc_heatmap_non_stable=heatmap_data_non_stable,raw_data_non_stable=non_stable_expression_heatmap_data)
+```
+
+## Legend HIGH CLR
+
+```{r fig.width=4,fig.height=3}
+maximum=max((high_clr_expression_heatmap_data %>% filter(data=='human'))$high_clr_count)
+ref_colours = na.omit(generate_colours( c(0,1/3,2/3,1) ))
+step=ceiling((maximum/3)/10)*10
+high_expressed_breaks = c( 0, seq(0,step*floor(maximum / step),by=step)[-1], Inf )
+y_coords = c( sapply(cut(high_expressed_breaks,high_expressed_breaks), function(x) rep(x,length(ref_colours)))) %>% tidyr::replace_na(0)
+colours = c( sapply(high_expressed_breaks, function(x) generate_saturation(ref_colours,rep(x,length(ref_colours)),maximum=maximum)))
+
+ggplot(data.frame(x=factor( rep(names(ref_colours),length(high_expressed_breaks)) , names(ref_colours)),y=factor(y_coords,c("0",levels(cut(high_expressed_breaks,high_expressed_breaks)))), colors=colours))+
+  geom_point(aes(x=x,color=colors,y=y),size=10,shape=15)+
+  scale_color_identity()+
+  theme_minimal()+
+  scale_y_discrete(labels=c("0","<20","<40",">40"))+
+  scale_x_discrete(labels=c("0%",">0%",">33%",">66%"))+
+  xlab("Fraction of cells expressing")+
+  ylab("Number of highly expressed cells")+
+  ggtitle("Heatmap legend")+
+  coord_flip()+
+  theme(panel.grid = element_blank())
+```
+
+## Legend non-stable
+
+```{r fig.width=4,fig.height=3}
+maximum=max((non_stable_expression_heatmap_data %>% filter(data=='human'))$non_stable_count)
+ref_colours = na.omit(generate_colours( c(0,1/3,2/3,1) ))
+step=ceiling((maximum/3)/10)*10
+high_expressed_breaks = c( 0, seq(0,step*floor(maximum / step),by=step)[-1], Inf )
+y_coords = c( sapply(cut(high_expressed_breaks,high_expressed_breaks), function(x) rep(x,length(ref_colours)))) %>% tidyr::replace_na(0)
+colours = c( sapply(high_expressed_breaks, function(x) generate_saturation(ref_colours,rep(x,length(ref_colours)),maximum=maximum)))
+
+ggplot(data.frame(x=factor( rep(names(ref_colours),length(high_expressed_breaks)) , names(ref_colours)),y=factor(y_coords,c("0",levels(cut(high_expressed_breaks,high_expressed_breaks)))), colors=colours))+
+  geom_point(aes(x=x,color=colors,y=y),size=10,shape=15)+
+  scale_color_identity()+
+  theme_minimal()+
+  scale_y_discrete(labels=c("0","<20","<40",">40"))+
+  scale_x_discrete(labels=c("0%",">0%",">33%",">66%"))+
+  xlab("Fraction of cells expressing")+
+  ylab("Number of highly expressed cells")+
+  ggtitle("Heatmap legend")+
+  coord_flip()+
+  theme(panel.grid = element_blank())
+```
+
+
