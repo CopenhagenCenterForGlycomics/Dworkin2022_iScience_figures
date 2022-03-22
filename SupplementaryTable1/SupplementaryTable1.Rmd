@@ -1,0 +1,22 @@
+# Supplementary Table 1 generation
+
+```{r}
+tissue_results_log <- readRDS("~/GRC/other_projects/glycogenome_expression_variation/tissue_results_log.Rds")
+gtex_tissue_sample_counts <- unique(tissue_results_log[c('samples','tissue')])
+gtex_tissue_sample_counts <- gtex_tissue_sample_counts[order(gtex_tissue_sample_counts['tissue']),]
+```
+
+```{r}
+tissue_results_log_tcga <- readRDS("~/GRC/other_projects/glycogenome_expression_variation/tissue_results_log_tcga.Rds")
+tcga_tissue_sample_counts <- unique(tissue_results_log_tcga[c('samples','tissue')])
+tcga_tissue_sample_counts <- tcga_tissue_sample_counts[order(tcga_tissue_sample_counts['tissue']),]
+```
+
+```{r}
+writexl::write_xlsx(
+# knoter::excel(
+  x = list(
+    GTeX = gtex_tissue_sample_counts, 
+    TCGA = tcga_tissue_sample_counts),
+  path = 'SupplementaryTable1.xlsx')
+```

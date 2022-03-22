@@ -1,0 +1,37 @@
+# Supplementary Table 2 generation
+
+```{r}
+alldata <- readRDS('alldata_human.Rds')
+```
+
+```{r}
+annotations <- rownames(alldata)
+annotations <- gsub('_cluster_.*$', '', annotations)
+annotations <- data.frame(x = annotations)
+annotations <- tidyr::separate(annotations, x, c('Tissue','Distinct celltypes'), ':')
+human_summary_table <- setNames(as.data.frame(table(annotations$Tissue)), names(annotations))
+```
+
+```{r}
+alldata <- readRDS('alldata_mouse.Rds')
+alldata_clean_mouse = alldata[!grepl('SMALL',rownames(alldata)),]
+```
+
+```{r}
+annotations <- rownames(alldata_clean_mouse)
+annotations <- annotations[!grepl('Unknown', annotations)]
+annotations <- gsub('_cluster_.*$', '', annotations)
+annotations <- gsub('^[^:]*:', '', annotations)
+annotations <- data.frame(x = annotations)
+annotations <- unique(tidyr::separate(annotations, x, c('Tissue','Distinct celltypes'), ':'))
+mouse_summary_table <- setNames(as.data.frame(table(annotations$Tissue)), names(annotations))
+```
+
+```{r}
+writexl::write_xlsx(
+# knoter::excel(
+  x = list(
+    `Celltypes in human tissues` = human_summary_table, 
+    `Celltypes in mouse tissues` = mouse_summary_table),
+  path = 'SupplementaryTable1.xlsx')
+```

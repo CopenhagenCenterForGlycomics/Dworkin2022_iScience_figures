@@ -1594,7 +1594,6 @@ saveRDS(glycogene_mouse_cell.df, 'glycogene_mouse_pseudobulkpresence_clr_seg_cel
 
 ### writing xlsx
 
-glycogene_mouse_cell.df
 ```{r}
 
 glycogene.df <- plyr::rbind.fill(glycogene_human.df, glycogene_mouse.df)
