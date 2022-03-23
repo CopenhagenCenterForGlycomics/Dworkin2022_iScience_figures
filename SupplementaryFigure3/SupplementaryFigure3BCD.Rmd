@@ -1,27 +1,27 @@
 
 ```{r include=FALSE}
-library(edgeR)
-library(compositions)
-library(recount)
-library(biomaRt)
 library(ggplot2)
 library(ggrepel)
 library(dplyr)
-library(cowplot)
 library(ggpubr)
-library(readxl)
 ```
 
 ```{r}
+file.copy('../generate_bulk_data/seg_lookup.Rds', getwd())
 segs = unique(names(readRDS('seg_lookup.Rds')))
+file.remove('seg_lookup.Rds')
 ```
 
-```{r eval=file.exists('tissue_results_log_tcga.Rds')}
-tissue_results_tcga = readRDS('tissue_results_log_tcga.Rds')
-```
-
-```{r eval=file.exists('tissue_results_log.Rds')}
+```{r}
+file.copy('../generate_bulk_data/tissue_results_log.Rds', getwd())
 tissue_results = readRDS('tissue_results_log.Rds')
+file.remove('tissue_results_log.Rds')
+```
+
+```{r}
+file.copy('../generate_bulk_data/tissue_results_log_tcga.Rds', getwd())
+tissue_results_tcga = readRDS('tissue_results_log_tcga.Rds')
+file.remove('tissue_results_log_tcga.Rds')
 ```
 
 ```{r}
@@ -33,7 +33,10 @@ tissue_results_all = subset(
 ```
 
 ```{r}
+file.copy('../generate_single_cell_data/pseudobulk_log_seg_norm.Rds', getwd())
 pseudobulk_rel_diff = readRDS('pseudobulk_log_seg_norm.Rds')
+file.remove('pseudobulk_log_seg_norm.Rds')
+
 message("Loading up Pseudobulks from ",attributes(pseudobulk_rel_diff)$repo," revision ",attributes(pseudobulk_rel_diff)$revision)
 cutoffs=attributes(pseudobulk_rel_diff)$cutoffs
 median_cutoff=median(cutoffs)

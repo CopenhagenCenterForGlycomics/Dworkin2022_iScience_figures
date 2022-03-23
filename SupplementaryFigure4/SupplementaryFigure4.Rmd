@@ -1,0 +1,845 @@
+
+```{r}
+library('ggplot2')
+library('ggExtra')
+library('ggpubr')
+library('grid')
+library('gridExtra')
+library('cowplot')
+library('gtable')
+library('Matrix')
+```
+
+```{r}
+x <- readRDS('chromium10x_constructor_norm_nziqr_env.Rds')
+```
+
+```{r}
+cell_sampling.samplesize <- function(mixture.df, num.int, name.var) {
+  
+  splitn <- sample(1:ncol(mixture.df), size = num.int, replace = F)
+  
+  mixture.df <- mixture.df[,splitn]
+  
+  result.list <- setNames(list(mixture.df), name.var)
+  
+  return(result.list)
+  
+}
+```
+
+```{r}
+pseudobulk <- function(mixture.df, log1p_transform = T) {
+  
+  mixture.df <- if(isFALSE(log1p_transform)) { log1p(mixture.df) } else { mixture.df }
+  
+  bool.df <- !!mixture.df
+  
+  pseudobulk.df <- data.frame(
+    `ref_genome|gene_symbol` = rownames(mixture.df),
+    sum_raw  = Matrix::rowSums(mixture.df, na.rm = T),
+    avg_raw  = Matrix::rowMeans(mixture.df, na.rm = T),
+    avg_nonzero = Matrix::rowMeans(mixture.df, na.rm = T)/Matrix::rowSums(bool.df, na.rm = T),
+    num_cells_value = Matrix::rowSums(bool.df, na.rm = T),
+    num_cells_zero = Matrix::rowSums(!bool.df, na.rm = T),
+    check.names = F)
+  
+  pseudobulk.df$num_cells_na <- 
+    ncol(mixture.df) - (
+    pseudobulk.df$num_cells_value + 
+    pseudobulk.df$num_cells_zero)
+  
+  return(pseudobulk.df)
+  
+}
+```
+
+```{r}
+bulk_sc_combine <- function(bulk.df, pseudobulk.df, gene_rows.df) {
+  
+  print('merging single and bulk df on ensembl gene id')
+  pseudobulk.df <- merge(pseudobulk.df, gene_rows.df)
+  names(pseudobulk.df)[which(
+    names(pseudobulk.df) %in%
+    'ref_genome|gene_symbol')] <- 'hsap_gene'
+  
+  result.df       <- merge(bulk.df, pseudobulk.df, all = T)
+  result.df$color <- ifelse(is.na(result.df$entrezgene_id), 'grey', 'red')
+  result.df$alpha <- ifelse(is.na(result.df$entrezgene_id), 0.25, 1)
+  
+  m_to_o.genes <- grep('___', result.df$hsap_gene, fixed = T, value = T)
+  m_to_o.genes <- unique(c(m_to_o.genes, gsub('___.*$', '', m_to_o.genes)))
+  m_to_o.genes <- paste0('^', m_to_o.genes, '$')
+  
+  m_to_o.df <- result.df[unlist(lapply(m_to_o.genes, grep, result.df$hsap_gene)),]
+  m_to_o.df <- m_to_o.df[, c(1:9, 13:14)]
+  
+  result.df <- result.df[-which(result.df$ensembl_gene_id %in% m_to_o.df$ensembl_gene_id),]
+  result.df <- result.df[order(result.df$alpha),]
+  result.df <- result.df[, c(1:9, 13:14)]
+  
+  attributes(result.df)$many_to_one.df <- m_to_o.df  
+  
+  return(result.df)
+  
+}
+```
+
+```{r}
+plotter.unit_redux_w_simulation_table <- function(data.list, ...) {
+  
+  list2env(data.list, envir = environment())
+  remove(data.list)
+  
+  list2env(list(...), envir = environment())
+  
+  # multiple sampling for correlation plots ----
+  correlation_distribution_with_sample_size <- function(sc.df, bulk.df, filter.char = 'none') {
+    
+    set.seed(42)
+    int.vec <- ceiling(ncol(sc.df)/3)
+    int.vec <- c(ceiling(int.vec/2), int.vec)
+    int.vec <- c(int.vec[1]*0.4, int.vec)
+    correlation.list <- lapply(int.vec, function(num.int) {
+      replicate(
+        100, {
+          
+        mixturesc.df <- cell_sampling.samplesize(sc.df, name.var = 'mixture.df', num.int = num.int)[[1]]
+        mixturesc.df <- pseudobulk(mixturesc.df)
+        
+        dummy.df <- setNames(
+          data.frame(matrix(NA, 
+          nrow = nrow(bulk.df) - nrow(mixturesc.df), 
+          ncol = ncol(mixturesc.df))), 
+          names(mixturesc.df))
+        
+        mixturesc.df <- rbind.data.frame(mixturesc.df, dummy.df)
+        mixture.df   <- cbind.data.frame(bulk.df[,1:3], mixturesc.df)
+        cor(mixture.df$TPM, mixture.df$avg_raw, method = 'spearman', use = 'na.or.complete') }) })
+    
+    correlation.df <-
+      data.frame(
+        cluster_size = c(86,215,430),
+        `R2_(100_samples)` = paste(
+          format(x = sapply(correlation.list, mean), digits = 3),
+          ' +/- ',
+          format(x = sapply(correlation.list, sd), digits = 1),
+          sep = ''))
+    names(correlation.df) <- gsub('_', ' ', names(correlation.df))
+    names(correlation.df)[2] <- gsub('\\.(.*)\\.', '(\\1)', names(correlation.df)[2])
+    
+    return(correlation.df)
+    
+  }
+  
+  scatterplot.df <- switch(
+    filter.char,
+    '5TPM' = { scatterplot.df[with(scatterplot.df, TPM <= 5),] },
+    'GT'   = { scatterplot.df[with(scatterplot.df, hsap_gene %in% glycosyltransferase.vec),] },
+    'none' = { scatterplot.df })
+  
+  scatterplot.df <- scatterplot.df[order(scatterplot.df$hsap_gene, na.last = T),]
+  mixturesc.df   <- mixturesc.df[with(scatterplot.df, hsap_gene[!is.na(hsap_gene)]),]
+  
+  correlation.df <- 
+    correlation_distribution_with_sample_size(
+      mixturesc.df, 
+      scatterplot.df, 
+      filter.char)
+  
+  tmp <-
+    cor.test(
+      scatterplot.df[,c(x.char)],
+      scatterplot.df[,c(y.char)],
+      "spearman",
+      alternative = "greater",
+      exact = F)
+  
+  rho <- tmp$estimate
+  p.value <- tmp$p.value
+  p.value <-
+    if(p.value == 0) { 2.2e-16 } else { p.value }
+  
+  ggplot.obj <-
+    ggplot(scatterplot.df) +
+    geom_point(
+      aes(
+        x = !!sym(x.char),
+        y = !!sym(y.char)),
+      color = 'grey') +
+    geom_smooth(
+      aes(
+        x = !!sym(x.char),
+        y = !!sym(y.char)),
+      method = 'loess',
+      se = T,
+      color = 'black',
+      fullrange = T) +
+    scale_x_log10() +
+    scale_y_log10() +
+    annotation_logticks(sides = 'bl') +
+    geom_abline(
+      intercept = 0,
+      slope = 1,
+      linetype = 'dashed') +
+    annotate(
+      geom = 'text',
+      label = paste(
+        'Spearmans R: ',
+        format(rho, digits = 3),
+        ', p.value: ',
+        format(p.value, digits = 3)),
+      x = 0,
+      y = Inf,
+      hjust = -.1,
+      vjust = 1) +
+    theme_minimal() +
+    ggtitle(title.char)
+  
+  table.obj <- tableGrob(correlation.df, rows = NULL)
+  table.obj <- gtable_add_grob(
+    table.obj,
+    grobs = rectGrob(
+      gp = gpar(fill = NA, lwd = 2)),
+    t = 2,
+    b = nrow(table.obj),
+    l = 1,
+    r = ncol(table.obj))
+  table.obj <- gtable_add_grob(
+    table.obj,
+    grobs = rectGrob(
+      gp = gpar(fill = NA, lwd = 2)),
+    t = 1,
+    l = 1,
+    r = ncol(table.obj))
+  
+  ggplot.obj <-
+    ggdraw(ggplot.obj) + 
+    draw_plot(table.obj, x = 0.73, y = 0.125, width = 0.1 , height = 0.2)
+  
+  ggplot.obj <-
+    ggplotify::as.ggplot(ggplot.obj)
+  
+  return(ggplot.obj)
+  
+}
+```
+
+```{r, fig.width=7, fig.height=7}
+plotter.unit_redux_w_simulation_table(
+  structure(
+    setNames(list(
+      x$merged_replicates.list$mixture1.bulk_pseuodbulk, 
+      x$annotated_replicates.list$sc_mixture1.hg19.df, 
+      x$annotated_replicates.list$gene_rows.df), 
+      c('scatterplot.df', 'mixturesc.df', 'gene_rows.df')),
+    class = c('list', 'unit_redux_w_simulation_table')),
+  glycosyltransferase.vec = x$glycosyltransferase.df$transtable2_symbol,
+  filter.char = 'none',
+  x.char = 'TPM',
+  y.char = 'avg_raw',
+  condition = 'bulk_replicate1',
+  title.char = 'linear relationship between matched bulk and pseudobulk replicate 1')
+```
+
+```{r, fig.width=7, fig.height=7}
+plotter.unit_redux_w_simulation_table(
+  structure(
+    setNames(list(
+      x$merged_replicates.list$mixture1.bulk_pseuodbulk, 
+      x$annotated_replicates.list$sc_mixture1.hg19.df, 
+      x$annotated_replicates.list$gene_rows.df), 
+      c('scatterplot.df', 'mixturesc.df', 'gene_rows.df')),
+    class = c('list', 'unit_redux_w_simulation_table')),
+  glycosyltransferase.vec = x$glycosyltransferase.df$transtable2_symbol,
+  filter.char = 'GT',
+  x.char = 'TPM',
+  y.char = 'avg_raw',
+  condition = 'bulk_replicate1',
+  title.char = 'linear relationship between matched bulk and pseudobulk replicate 1')
+```
+
+```{r, fig.width=7, fig.height=7}
+plotter.unit_redux_w_simulation_table(
+  structure(
+    setNames(list(
+      x$merged_replicates.list$mixture2.bulk_pseuodbulk, 
+      x$annotated_replicates.list$sc_mixture2.hg19.df, 
+      x$annotated_replicates.list$gene_rows.df), 
+      c('scatterplot.df', 'mixturesc.df', 'gene_rows.df')),
+    class = c('list', 'unit_redux_w_simulation_table')),
+  glycosyltransferase.vec = x$glycosyltransferase.df$transtable2_symbol,
+  filter.char = 'none',
+  x.char = 'TPM',
+  y.char = 'avg_raw',
+  condition = 'bulk_replicate2',
+  title.char = 'linear relationship between matched bulk and pseudobulk replicate 2')
+```
+
+```{r, fig.width=7, fig.height=7}
+plotter.unit_redux_w_simulation_table(
+  structure(
+    setNames(list(
+      x$merged_replicates.list$mixture2.bulk_pseuodbulk, 
+      x$annotated_replicates.list$sc_mixture2.hg19.df, 
+      x$annotated_replicates.list$gene_rows.df), 
+      c('scatterplot.df', 'mixturesc.df', 'gene_rows.df')),
+    class = c('list', 'unit_redux_w_simulation_table')),
+  glycosyltransferase.vec = x$glycosyltransferase.df$transtable2_symbol,
+  filter.char = 'GT',
+  x.char = 'TPM',
+  y.char = 'avg_raw',
+  condition = 'bulk_replicate2',
+  title.char = 'linear relationship between matched bulk and pseudobulk replicate 2')
+```
+```{r}
+rowMeansNonZero <- function(mat){
+  
+  mat[which(mat == 0)] <- NA
+  munz <- Matrix::rowMeans(mat, na.rm = T)
+  munz[is.nan(munz)] <- 0
+  
+  return(munz)
+  
+}
+```
+
+```{r}
+rowVar <- function(mat, ...) {
+  
+  rowvar <- Matrix::rowSums((mat - Matrix::rowMeans(mat, na.rm = T))^2, na.rm = T)/(Matrix::rowSums(!is.na(mat)) - 1)
+  return(rowvar)
+  
+}
+```
+
+```{r}
+cbrt <- function(x) { sqrt(sqrt(x)) }
+
+cutoff_labeller <- function(df, gene_symbol.vec, operator.char, cutoff.int) { 
+  
+  labels <- unique(
+    df$hsap_gene[with(df, 
+      hsap_gene %in% gene_symbol.vec & 
+      do.call(operator.char, list(TPM, cutoff.int)))])
+  
+  labels <- if(identical(labels, character(0))) { 'None' } else { labels }
+  
+  return(labels)
+}
+```
+
+```{r}
+# transforming labels for easier reading in ggplot2 ----
+beautify_labelerror <- function(labelerror.list, num_cells.vec, bulk_cutoff.vec, num_reps.int) {
+  
+  seq.vec <- seq(num_reps.int*length(num_cells.vec)) 
+  # seq(num_reps.int*length(bulk_cutoff.vec))
+  
+  cell_bucket.list <- split(seq.vec, sort(seq.vec %% length(num_cells.vec)))
+  # split(seq.vec, sort(seq.vec %% length(bulk_cutoff.vec)))
+  
+  conditions.vec <- seq(length(labelerror.list[[1]]))
+  
+  bulk_cutoff.char <- 
+    paste(unique(strsplit(paste(as.character(bulk_cutoff.vec), collapse = ''), '')[[1]]), collapse = '')
+  
+  labelerror.df <-
+    do.call(rbind, unlist(lapply(cell_bucket.list, function(bucket) {
+      lapply(conditions.vec, function(i){
+        data.frame(
+          label       = labelerror.list[[1]][[i]][,'labels'], 
+          sc_cutoff   = labelerror.list[[1]][[i]][,'cutoff'],
+          bulk_cutoff = gsub(paste('^.*under([', bulk_cutoff.char, ']{1,2}).*$', sep = ''), '\\1', names(labelerror.list[[1]])[i]),
+          num_cells   = labelerror.list[bucket][[1]][[i]][,'num_cells'],
+          avg_score   = rowMeans(do.call(cbind, lapply(labelerror.list[bucket], function(llerror.list) { llerror.list[[i]][,'values'] }))),
+          var_score   = matrixStats::rowVars(do.call(cbind, lapply(labelerror.list[bucket], function(llerror.list) { llerror.list[[i]][, 'values'] }))),
+          error_rate  = rowSums(do.call(cbind, lapply(labelerror.list[bucket], function(llerror.list) { llerror.list[[i]][,'error']  })))/num_reps.int,
+          error_type  = gsub('^.*(False(Positive|Negative)).*$', '\\1', names(labelerror.list[[1]])[i]),
+          scpb        = gsub('False.*$', '', names(labelerror.list[[1]])[i]))
+      }) }), recursive = F))
+  
+  return(labelerror.df)
+  
+}
+```
+
+```{r}
+# transforming labels for easier reading in ggplot2 ----
+beautify_grouperror <- function(grouperror.df, bulk_cutoff.vec, sc_cutoff.names) {
+  
+  bulk_cutoff.char <- 
+    paste(unique(strsplit(paste(as.character(bulk_cutoff.vec), collapse = ''), '')[[1]]), collapse = '')
+  
+  pseudobulk.regex <- 
+    paste('(FalsePositive|FalseNegative)under[', bulk_cutoff.char, ']{1,2}TPM$', sep = '')
+  
+  threshold.char <- 
+    paste(sc_cutoff.names, collapse = '|')
+  
+  threshold.regex  <-
+    paste('^(', threshold.char, ')(FalsePositive|FalseNegative)', sep = '')
+  
+  threshold.levels <-
+    paste('<', bulk_cutoff.vec, 'TPM', sep = '')
+  
+  grouperror.df <- reshape2:::melt.data.frame(
+    grouperror.df, 
+    measure.vars = names(grouperror.df)[
+      1:(ncol(grouperror.df)-1)])
+  
+  grouperror.df <- within(grouperror.df, {
+    pseudobulk = gsub(pseudobulk.regex, '', variable)
+    threshold  = gsub(threshold.regex, '', variable)
+    threshold  = gsub('under', '<', threshold)
+    threshold  = factor(threshold, threshold.levels)
+    prediction = gsub('^.*(FalsePositive|FalseNegative).*$','\\1',  variable)
+    remove(variable)
+  })
+  
+  factor(grouperror.df$threshold, paste0('<', bulk_cutoff.vec, 'TPM'))
+  
+  return(grouperror.df)
+  
+}
+```
+
+```{r}
+# convenience function for transforming cutoffs ----
+cutoff_transform_wrapper <- function(cutoff_transform.list, sc_cutoff.list) {
+  
+  if(all(is.na(cutoff_transform.list))) {
+    
+    sc_cutoff.names <- names(sc_cutoff.list)
+    
+  } else {
+    
+    sc_cutoff.names <- c(names(sc_cutoff.list), names(cutoff_transform.list))
+    cutoff_transform.list <-
+      mapply(
+        function(cutoff.vec, transform.func) { transform.func(cutoff.vec) },
+        sc_cutoff.list,
+        cutoff_transform.list,
+        SIMPLIFY = F)
+    sc_cutoff.list <- setNames(c(sc_cutoff.list, cutoff_transform.list), sc_cutoff.names)
+    
+  }
+  
+  sc_cutoff.list <- as.list(data.frame(t(sapply(sc_cutoff.list, rep, each = 2))))
+  
+  return.list <- list(
+    sc_cutoff.names =  sc_cutoff.names,
+    sc_cutoff.list = sc_cutoff.list,
+    cutoff_transform.list = cutoff_transform.list)
+  
+  return(return.list)
+  
+}
+```
+
+```{r}
+# convenience function for associating bulk and single cutoffs with respective gene labels ---- 
+cutoff_labeller_wrapper <- function(bulk.df, symbol.vec, bulk_cutoff.vec, sc_cutoff.list, sc_cutoff.names) {
+  
+  result.list <- 
+    setNames(
+      unlist(
+        recursive = F,
+        x =lapply(bulk_cutoff.vec, function(cutoff.int) { 
+          Vectorize(cutoff_labeller, c('operator.char'), SIMPLIFY = F)(
+            df = bulk.df,
+            gene_symbol.vec = symbol.vec,
+            operator.char = c(">", "<"),
+            cutoff.int = cutoff.int) })), 
+      c(paste(as.vector(outer(c(">","<"), bulk_cutoff.vec, paste, sep ='')), 'TPM', sep = '')))
+  
+  result.list <- mapply(function(labels.vec, cutoff.vec) {
+    attributes(labels.vec) <- 
+      list(sc_cutoff.int = setNames(
+        as.list(cutoff.vec),
+        sc_cutoff.names))
+    
+    return(labels.vec)
+    
+  },  result.list, sc_cutoff.list,
+  SIMPLIFY = F)
+  
+  return(result.list)
+  
+}
+```
+
+```{r}
+# computing cutoff group and label error rate for glycosyltransferases ----
+naive_cutoff_assessor.glycosyltran <- function(placholder, ...) {
+  
+  list2env(..., envir = environment())
+  
+  # associating boolean with bulk gt values based on cutoff ----
+  bulk_gt_cutoff.df <- data.frame(gts = c(...)$gene_symbol.vec)
+  bulk_gt_cutoff.df <- within(bulk_gt_cutoff.df, {
+    `>TPM1`  = gts %in% cutoff_labeller(c(...)$annotated_bulk.df, bulk_gt_cutoff.df$gts, ">", 1)
+    `<TPM1`  = gts %in% cutoff_labeller(c(...)$annotated_bulk.df, bulk_gt_cutoff.df$gts, "<", 1)
+  })
+  
+  #' TODO possibily erroneous and can drop this block
+  #' applying transforms to cutoffs. 
+  list2env(
+    cutoff_transform_wrapper(
+    cutoff_transform.list, 
+    sc_cutoff.list), 
+    envir = environment())
+  
+  # retreiving specific bulk labels and assigning corresponding sc cutoff ----
+  bulk_cutoff_label_assignment.env <-
+    list2env(
+      envir = new.env(),
+      x = cutoff_labeller_wrapper(
+        annotated_bulk.df, 
+        gene_symbol.vec, 
+        bulk_cutoff.vec, 
+        sc_cutoff.list, 
+        sc_cutoff.names))
+  
+  # storing results of pseudobulk method application to expression matrix ----
+  sample_psuedobulk <- function(samp.mat, pb_f.list) {
+    
+    genes.vec <- rownames(samp.mat)
+    
+    pbsc.env <-
+      list2env(
+        envir = new.env(),
+        setNames(
+          lapply(
+            pb_f.list, 
+            function(pb_function) { pb_function(samp.mat) }),
+          c(names(pb_f.list))))
+    
+    return(pbsc.env)
+    
+  }
+  
+  # calculating group and label type1 and type2 error rates ----
+  type1type2 <- function(pb_method_col.vec, psuedobulk.env, cutoffs.env, sc_cutoffs.names, genes.vec, num_cells.int) {
+    
+    result.list <- 
+      
+      outer(pb_method_col.vec, names(cutoffs.env), function(pb_method_name.vec, cutoff_name.vec) {
+        
+        env_accession.list <-
+          as.list(rbind.data.frame(pb_method_name.vec, cutoff_name.vec, sc_cutoff.names))
+
+        aggregate.list <- mapply(
+          function(bool,var.vec){
+
+            # retreiving indices
+            is <- which(genes.vec %in% cutoffs.env[[var.vec[2]]])
+            # retreiving genes correctly above/below cutoff
+            labels <- genes.vec[is]
+            # retreiving values
+            values <- psuedobulk.env[[var.vec[1]]][is]
+            # retreiving cutoff
+            cutoff <- attributes(cutoffs.env[[var.vec[2]]])$sc_cutoff.int[[var.vec[3]]]
+            # values less than cutoff
+            call <- values < cutoff
+            # values incorrectly above/below cutoff
+            error  <- if(bool) { !call } else { call }
+
+            gerror <- sum(error)/length(cutoffs.env[[var.vec[2]]])
+
+            lerror <- data.frame(labels, values, cutoff, error, num_cells = num_cells.int)
+
+            error.list <- list(
+              group_error = gerror,
+              label_error = lerror)
+
+            return(error.list)
+
+          },
+          grepl('<', cutoff_name.vec),
+          env_accession.list,
+          SIMPLIFY = F)
+
+        return(aggregate.list)
+        
+        })
+    
+    names(result.list) <- as.vector(outer(sc_cutoff.names, names(cutoffs.env), paste, sep = ''))
+    names(result.list) <- gsub('>', 'FalsePositiveunder',  names(result.list))
+    names(result.list) <- gsub('<','FalseNegativeunder',   names(result.list))
+    
+    grouperror.df <- data.frame(t(unlist(lapply(result.list,  `[[`, 1))))
+    grouperror.df$size <- num_cells.int
+    labelerror.list <- lapply(result.list, `[[`, 2)
+    
+    result.list <- list(
+      grouperror.df = grouperror.df ,
+      labelerror.list = labelerror.list)
+    
+    return(result.list)
+    
+  }
+      
+  # constructing vector for proper indexing of environments ----
+  sumstats <- function(samp.mat, pb.env, i, nc.int) {
+    
+    sumstats.df <- data.frame(label = rownames(samp.mat))
+    sumstats.df <- cbind.data.frame(sumstats.df, data.frame(as.list(pb.env)))
+    sumstats.df <- cbind.data.frame(
+      sumstats.df, 
+      matrixStats::rowQuantiles(
+        as.matrix(samp.mat), 
+        probs = c(0.05, 0.25, 0.5, 0.75, 0.95),
+        na.rm = T)) 
+    sumstats.df$var <- rowVar(samp.mat)
+    sumstats.df$gt_percent_zero <- Matrix::rowSums(samp.mat == 0, na.rm = T)/nc.int
+    sumstats.df$replicate_percent_zero <- sum(Matrix::colSums(samp.mat != 0, na.rm = T) == 0)/nc.int
+    sumstats.df$size <- nc.int
+    sumstats.df$replication <- i
+    
+    return(sumstats.df)
+    
+  }
+  
+  replications.list <-
+    
+    lapply(num_cells.vec, function(num_cells.int) { 
+      
+      lapply(1:num_reps.int, function(i) {
+        
+        sample_cluster.mat <- cell_sampling.samplesize(
+          annotated_sc.df, 
+          num.int = num_cells.int, 
+          name.var = 'data')[[1]]
+
+        # storing results of pseudobulk method application to expression matrix ----
+        multi_method_psuedobulk.env <- sample_psuedobulk(sample_cluster.mat, pseudobulk_function.list)
+        
+        # constructing vector for proper indexing of environments ----
+        pseudobulk_methods.names <- names(multi_method_psuedobulk.env)
+        
+        # calculating group and label type1 and type2 error rates ----
+        result.list <- type1type2(
+          pseudobulk_methods.names, 
+          multi_method_psuedobulk.env, 
+          bulk_cutoff_label_assignment.env, 
+          sc_cutoffs.names,
+          rownames(sample_cluster.mat),
+          num_cells.int) 
+        
+        # storing gene-specific quantiles of expression matrix ---- 
+        result.list$sumstats.df <- sumstats(sample_cluster.mat, multi_method_psuedobulk.env, i, num_cells.int)
+        
+        return(result.list) }) })
+  
+  replications.list <- unlist(replications.list, recursive = F)
+  replications_grouperror.df   <- do.call(rbind, lapply(replications.list, `[[`, 1)) 
+  replications_labelerror.list <- lapply(replications.list, `[[`, 2)
+  replications_sumstats.df     <- do.call(rbind, lapply(replications.list, `[[`, 3))
+  
+  replications_grouperror.df <- beautify_grouperror(replications_grouperror.df, bulk_cutoff.vec, sc_cutoff.names)
+  replications_labelerror.df <- beautify_labelerror(replications_labelerror.list, num_cells.vec, bulk_cutoff.vec, num_reps.int)
+  replications_labelerror.df <- merge(
+    replications_labelerror.df, 
+    annotated_bulk.df[,c('hsap_gene', 'TPM')], 
+    by.x = 'label', by.y = 'hsap_gene')
+  
+  result.list <- 
+    list(
+      grouperror.df = replications_grouperror.df,
+      labelerror.df = replications_labelerror.df,
+      sumstats.df = replications_sumstats.df,
+      bulk_gt_cutoff.df = bulk_gt_cutoff.df)
+  
+  return(result.list)
+  
+}
+```
+
+```{r}
+args <- list(
+  bulk_cutoff.vec = c(1),
+  sc_cutoff.list  = list(mu = c(0.01), sum = c(30)),
+  cutoff_transform.list = list(NA),
+  num_reps.int  = 100,
+  num_cells.vec = c(50, 100, 200, 400, 600, 800, 1000),
+  annotated_bulk.df = x$merged_replicates.list$mixture1.bulk_pseuodbulk,
+  annotated_sc.df   = x$annotated_replicates.list$sc_mixture1.hg19.df,
+  gene_symbol.vec   = x$annotated_replicates.list$gene_rows.df$hgnc_symbol,
+  pseudobulk_function.list = list(
+    mu = function(x)  { rowMeans(x, na.rm = T) },
+    sum = function(x) { rowSums(x, na.rm = T) }))
+
+args$gene_symbol.vec <- 
+  args$gene_symbol.vec[
+    !is.na(args$gene_symbol.vec)]
+
+args$annotated_bulk.df = args$annotated_bulk.df[args$annotated_bulk.df$hsap_gene %in% args$gene_symbol.vec,]
+args$annotated_sc.df = args$annotated_sc.df[rownames(args$annotated_sc.df) %in% args$gene_symbol.vec,]
+```
+
+```{r}
+set.seed(42)
+options(stringsAsFactors = F)
+simulation.list <- naive_cutoff_assessor.glycosyltran(structure('placeholder', class = c('character', 'glycosyltran')), args)
+```
+
+```{r}
+lm_constructor <- function(data, num_cells.int, yvar = 'avg_score-var_score') {
+  
+  data <- data[with(data, num_cells == num_cells.int),]
+  data$`avg_score-var_score` <- data$avg_score - data$var_score
+  names(data)[which(names(data) == yvar)]  <- "y"
+  names(data)[which(names(data) == "TPM")] <- "x"
+  
+  data$x <- log10(data$x)
+  data$y <- log10(data$y)
+  data   <- data[with(data, intersect(which(is.finite(x)), which(is.finite(y)))),]
+  xseq   <- sort(unique(data$x))
+  
+  se      = TRUE
+  level   = 0.95
+  formula = y ~ x
+  data$weight  = 1
+  
+  method <- match.fun("lm")
+  base.args <- list(quote(formula), data = quote(data), weights = quote(weight))
+  method.args <- list()
+  model <- do.call(method, c(base.args, method.args))
+  
+  # modeling relationship between bulk TPM and single cell mu scpb gt expression ----
+  pred <- stats::predict(model, newdata = data.frame(x = xseq), se.fit = se, level = level, interval = "confidence")
+  fit <- as.data.frame(pred$fit)
+  names(fit) <- c("y", "ymin", "ymax")
+  
+  pred.df <- base::data.frame(x = xseq, fit, se = pred$se.fit)
+  pred.df$x <- 10^pred.df$x
+  pred.df$y <- 10^pred.df$y
+  pred.df$ymin <- 10^pred.df$ymin
+  pred.df$ymax <- 10^pred.df$ymax
+  pred.df$num_cells <- num_cells.int
+  
+  bulk_cutoff.vec <- c(1,10,50)
+  
+  # modeling relationship between bulk TPM and single cell mu scpb naive cutoff ---- 
+  naive_cutoff_pred <- stats::predict(model, newdata = data.frame(x = log10(bulk_cutoff.vec)), se.fit = se, level = level, interval = "confidence")
+  naive_cutoff_fit  <- as.data.frame(naive_cutoff_pred$fit)
+  names(naive_cutoff_fit) <- c("y", "ymin", "ymax")
+  
+  naive_cutoff_pred.df <- base::data.frame(x = log10(bulk_cutoff.vec), naive_cutoff_fit, se = naive_cutoff_pred$se.fit)
+  naive_cutoff_pred.df$x <- 10^naive_cutoff_pred.df$x
+  naive_cutoff_pred.df$y <- 10^naive_cutoff_pred.df$y
+  naive_cutoff_pred.df$ymin <- 10^naive_cutoff_pred.df$ymin
+  naive_cutoff_pred.df$ymax <- 10^naive_cutoff_pred.df$ymax
+  naive_cutoff_pred.df$num_cells <- num_cells.int
+  
+  attributes(pred.df)$naive_cutoff_pred.df <- naive_cutoff_pred.df
+  attributes(pred.df)
+  
+  return(pred.df)
+  
+}
+```
+
+```{r}
+construct_threshold_model <- function(simulation.list, num_cells.vec, pseudobulk.type, spread.type) {
+  
+  list2env(simulation.list[c('labelerror.df','sumstats.df','bulk_gt_cutoff.df')], envir = environment())
+  remove(simulation.list)
+  
+  labelerror.df <-
+    unique(labelerror.df[
+      with(labelerror.df, scpb == pseudobulk.type),
+      c('label', 'avg_score', 'var_score', 'TPM', 'num_cells')])
+  
+  labelerror.df$sd_score <- sqrt(labelerror.df$var_score)
+  
+  cutoff_pred.df <-
+    cbind.data.frame(
+      
+      # predicting single cell cutoff from naive bulk cutoff with linear model ----
+      setNames(
+        rbind.data.frame(
+          attributes(lm_constructor(labelerror.df, num_cells.vec[1], 'avg_score'))$naive_cutoff_pred.df[,1:5],
+          attributes(lm_constructor(labelerror.df, num_cells.vec[2], 'avg_score'))$naive_cutoff_pred.df[,1:5],
+          attributes(lm_constructor(labelerror.df, num_cells.vec[3], 'avg_score'))$naive_cutoff_pred.df[,1:5],
+          attributes(lm_constructor(labelerror.df, num_cells.vec[4], 'avg_score'))$naive_cutoff_pred.df[,1:5],
+          attributes(lm_constructor(labelerror.df, num_cells.vec[5], 'avg_score'))$naive_cutoff_pred.df[,1:5],
+          attributes(lm_constructor(labelerror.df, num_cells.vec[6], 'avg_score'))$naive_cutoff_pred.df[,1:5],
+          attributes(lm_constructor(labelerror.df, num_cells.vec[7], 'avg_score'))$naive_cutoff_pred.df[,1:5]),
+        c('bulk_cutoff', 'sc_cutoff', 'sc_cutoff_min', 'sc_cutoff_max', 'sc_cutoff_se')),
+      
+      # predicting single cell threshold from naive bulk cutoff with linear model ----
+      setNames(
+        rbind.data.frame(
+          attributes(lm_constructor(labelerror.df, num_cells.vec[1], paste0(spread.type, '_score')))$naive_cutoff_pred.df[,2:6],
+          attributes(lm_constructor(labelerror.df, num_cells.vec[2], paste0(spread.type, '_score')))$naive_cutoff_pred.df[,2:6],
+          attributes(lm_constructor(labelerror.df, num_cells.vec[3], paste0(spread.type, '_score')))$naive_cutoff_pred.df[,2:6],
+          attributes(lm_constructor(labelerror.df, num_cells.vec[4], paste0(spread.type, '_score')))$naive_cutoff_pred.df[,2:6],
+          attributes(lm_constructor(labelerror.df, num_cells.vec[5], paste0(spread.type, '_score')))$naive_cutoff_pred.df[,2:6],
+          attributes(lm_constructor(labelerror.df, num_cells.vec[6], paste0(spread.type, '_score')))$naive_cutoff_pred.df[,2:6],
+          attributes(lm_constructor(labelerror.df, num_cells.vec[7], paste0(spread.type, '_score')))$naive_cutoff_pred.df[,2:6]),
+        c(paste0('sc_', spread.type, '_threshold'), 
+          paste0('sc_', spread.type, '_threshold_min'), 
+          paste0('sc_', spread.type, '_threshold_max'), 
+          paste0('sc_', spread.type, '_threshold_se'), 
+          'num_cells')))
+
+  cutoff_pred.df <- cutoff_pred.df[with(cutoff_pred.df, bulk_cutoff == 1),]
+  cutoff_pred.df$upper_threshold <- cutoff_pred.df[,'sc_cutoff'] + cutoff_pred.df[, paste0('sc_', spread.type, '_threshold')]
+
+  fit.char <- paste0(pseudobulk.type, '_', spread.type)
+  xseq   <- sequence(range(cutoff_pred.df$num_cells))
+  
+  # modeling relationship between cluster size and cutoff
+  xy1.df <- setNames(cutoff_pred.df[,c('num_cells', 'sc_cutoff')], c('x', 'y'))
+  model1.lm <- lm(y ~ x, data = xy1.df)
+  # modeling relationship between cluster size and threshold for pseudobulk ----
+  xy2.df <- setNames(cutoff_pred.df[,c('num_cells', 'upper_threshold')], c('x', 'y'))
+  model2.lm <- lm(y ~ I(-0.00164553 + (1977.00964553)/(1 + (x/1.617878e-12)^0.3999679)), data = xy2.df)
+
+  model.list <- list(
+    xseq      = xseq,
+    xy.df     = rbind(xy1.df, xy2.df), 
+    model1.lm = model1.lm,
+    model2.lm = model2.lm)
+  
+  return(model.list)
+  
+}
+```
+
+```{r}
+mu_pseudobulk_sd_modeling <- construct_threshold_model(simulation.list, args$num_cells.vec, 'mu',  'sd')
+```
+
+```{r}
+plot_model <- function(model.obj) {
+  
+  list2env(model.obj, envir = .GlobalEnv)
+  var.names <- names(model.obj)
+  remove(model.obj)
+  
+  plot_wrapper <<- function(xseq, xy.df, model1.lm, model2.lm) {
+    
+    # xy.df <- rbind.data.frame(xy.df, xy.df[8:14,])
+    # xy.df$y[8:14] <- xy.df$y[1:7] + xy.df$y[8:14]
+    # xy.df$y[15:21] <- xy.df$y[1:7] - xy.df$y[15:21]
+    # 
+    plot(xy.df, xlab = "cluster size", ylab = "cutoff +/- threshold")
+    lines(xseq, predict(model1.lm, data.frame(x=xseq)), col = "black")
+    lines(xseq, predict(model2.lm, data.frame(x=xseq)), col = "red")
+
+  }; var.names <- c(var.names, 'plot_wrapper')
+  
+  ggplot.obj <- ggplotify::as.ggplot(~plot_wrapper(xseq, xy.df, model1.lm, model2.lm))
+  remove(envir = .GlobalEnv, list = var.names)
+  
+  return(ggplot.obj)
+  
+}
+```
+
+```{r, fig.width=7, fig.height=7}
+plot_model(mu_pseudobulk_sd_modeling)
+```

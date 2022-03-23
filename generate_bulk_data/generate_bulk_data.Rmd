@@ -3,7 +3,6 @@
 library(edgeR)
 library(compositions)
 library(recount)
-library(biomaRt)
 library(ggplot2)
 library(ggrepel)
 library(dplyr)
@@ -23,47 +22,8 @@ lookup_symbol = function(gene,genedata) {
 glycogene_lookup=readRDS('glycogene_lookup.Rds')
 ```
 
-```{r eval=!file.exists('glycogene_lookup.Rds')}
-ensembl = useEnsembl(biomart = "ensembl",dataset = "hsapiens_gene_ensembl")
-glycogene_lookup = with(
-  getBM(
-    attributes = c('hgnc_symbol','ensembl_gene_id'),
-    filters = 'hgnc_symbol',
-    values = read.delim('glycogenes.tsv',header = F)$V1,
-    mart = ensembl), 
-  setNames(ensembl_gene_id, hgnc_symbol))
-saveRDS(glycogene_lookup,'glycogene_lookup.Rds')
-remove(ensembl)
-```
-
 ```{r eval=file.exists('seg_lookup.Rds')}
 seg_lookup = readRDS('seg_lookup.Rds')
-```
-
-```{r eval=!file.exists('seg_lookup.Rds')}
-seg_lookup <- 
-  setNames(
-      lapply(
-        readxl::excel_sheets('pnas.1820006116.sd01.xlsx'), 
-        readxl::read_xlsx, 
-        path = 'pnas.1820006116.sd01.xlsx'),
-      readxl::excel_sheets('pnas.1820006116.sd01.xlsx'))
-seg_lookup = lapply(seg_lookup, as.data.frame)
-seg_lookup = lapply(seg_lookup, `[[`, 1)
-seg_lookup = lapply(seg_lookup, toupper)
-seg_lookup = Reduce(intersect, seg_lookup)
-ensembl = useEnsembl(biomart = "ensembl", dataset = "hsapiens_gene_ensembl")
-seg_lookup = with(
-  getBM(
-    attributes=c('hgnc_symbol', 'ensembl_gene_id'), 
-    filters = 'hgnc_symbol', 
-    values = seg_lookup,
-    mart = ensembl), 
-  setNames(ensembl_gene_id, hgnc_symbol))
-attributes(seg_lookup)$repo = "glycogenome_expression_variation"
-attributes(seg_lookup)$revision = system("git describe --always --dirty", intern=T)
-saveRDS(seg_lookup,'seg_lookup.Rds')
-remove(ensembl)
 ```
 
 ```{r eval=file.exists('tissue_results_log_tcga.Rds')}
@@ -175,10 +135,4 @@ tissue_results = do.call(rbind, tissue_results)
 attributes(tissue_results)$repo = "glycogenome_expression_variation"
 attributes(tissue_results)$revision = system("git describe --always --dirty",intern=T)
 saveRDS(tissue_results,file = 'tissue_results_log.Rds')
-```
-
-```{r}
-tissue_results_all = rbind(
-  cbind(tissue_results, source='gtex'),
-  cbind(tissue_results_tcga, source='tcga'))
 ```

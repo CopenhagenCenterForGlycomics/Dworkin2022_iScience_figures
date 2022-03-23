@@ -11,25 +11,142 @@ require(ggplot2)
 # loading tabula sapiens data
 
 ```{r}
-TS_pseudobulk <- readRDS('glycogene_pseudobulkpresence.Rds')[
-  ,c('cluster','gene','cellnum','pseudobulk','status5E-03')]
-```
-
-# FUNCTION
-
-```{r}
-source('pvalue_functions.R')
+file.copy('../generate_single_cell_data/alldata_pseudobulkpresence.Rds', getwd())
+gene_expression.df <- readRDS('alldata_pseudobulkpresence.Rds')
+cutoff.int <- attributes(gene_expression.df)$cutoff.int
+file.remove('alldata_pseudobulkpresence.Rds')
 ```
 
 ```{r}
-# function for bucketing expressed/unpredictable/unexpressed genes
-prediction.df_wrapper
+# filtering for clusters of adequate size, annotation, and expression ----
+filtering <- function(gene_expression.df, taxon_id = c('9606', '10090'), glycogenes_only = F, other_genes = NULL, gte200 = T, annotated = T) {
+  
+  # filtering out non glycogenes ---
+  if(glycogenes_only) {
+    genes.vec <- switch(
+      taxon_id, 
+      '9606' = c(readLines('9606_glycogenes.txt'), other_genes),
+      '10090' = c(readLines('data/genesets/10090_glycogenes.txt'), other_genes))
+    gene_expression.df <- gene_expression.df[with(
+      gene_expression.df, gene %in% genes.vec),]
+  }
+  
+  # filtering out clusters with less than 200 cells ----
+  gene_expression.df <- 
+    if(gte200) {
+      gene_expression.df[with(
+        gene_expression.df,
+        cellnum >= 200),]
+    } else { gene_expression.df }
+  
+  # filtering out clusters with unknown celltype annotation ----
+  gene_expression.df <- 
+    if(isTRUE(annotated)) {
+      gene_expression.df <- gene_expression.df[with(
+        gene_expression.df, 
+        !(grepl(':Unknown', cluster))),]
+    } else if(isFALSE(annotated)) {
+      gene_expression.df <- gene_expression.df[with(
+        gene_expression.df, 
+        grepl(':Unknown', cluster)),]
+    } else { gene_expression.df }
+  
+  return(gene_expression.df)
+
+}
+```
+
+```{r}
+gene_expression.df <- filtering(gene_expression.df, taxon_id = '9606', glycogenes_only = T, other_genes = 'DAG1', gte200 = T, annotated = T)
+```
+
+```{r}
+gene_expression.df <- gene_expression.df[,c('cluster','gene','cellnum','pseudobulk','status5E-03')]
+```
+
+```{r}
+prediction.df_wrapper <- function(gene_expression.df, p_cutoff, numcells = 200, tissue = NA) {
+  
+  prediction.df <- if(is.na(tissue)) { 
+    gene_expression.df[with(
+      gene_expression.df, 
+      cellnum >= numcells), 
+      c('cluster','cellnum','gene', p_cutoff)]
+  } else {
+    gene_expression.df[with(
+      gene_expression.df, 
+      cellnum >= numcells &
+        grepl(paste0(tissue,':.*$'), cluster)), 
+      c('cluster','cellnum','gene', p_cutoff)]
+  }
+  
+  prediction.df$cluster <- paste0(prediction.df$cluster, ':', prediction.df$cellnum)
+  prediction.df$cellnum <- NULL
+  prediction.df <- reshape2::dcast(
+    data = prediction.df, 
+    formula = gene ~ cluster, 
+    value.var = p_cutoff)
+  rownames(prediction.df) <- prediction.df$gene
+  prediction.df$gene <- NULL
+  
+  cluster_prediction.df <- data.frame(
+    cellnum = as.integer(gsub('^.*:','',colnames(prediction.df))),
+    num_unpredictable = colSums(prediction.df == 'unpredictable'),
+    num_expressed = colSums(prediction.df == 'expressed'),
+    num_unexpressed = colSums(prediction.df == 'unexpressed'))
+  cluster_prediction.df$bucket_unpredictable <- cut(
+    cluster_prediction.df$num_unpredictable,
+    breaks = seq(-11,231,22),
+    labels = paste0(seq(0,100,10),'%'))
+  cluster_prediction.df$bucket_numcell <- cut(
+    cluster_prediction.df$cellnum,
+    breaks = c(seq(100, 900, 100), seq(1000, 6000, 1000)))
+  
+  global_prediction.df <- data.frame(
+    gene = rownames(prediction.df),
+    percent_unpredictable = rowSums(prediction.df == 'unpredictable')/ncol(prediction.df),
+    percent_predictable =  1 - rowSums(prediction.df == 'unpredictable')/ncol(prediction.df),
+    percent_unexpressed = rowSums(prediction.df == 'unexpressed')/ncol(prediction.df),
+    percent_expressed = rowSums(prediction.df == 'expressed')/ncol(prediction.df))
+  global_prediction.df$bucket_unpredictable_0.1 <- cut(
+    x = global_prediction.df$percent_unpredictable,
+    breaks = c(-0.05, 0, seq(0.05,1,0.1), 1, 1.05), # seq(-0.05,1.05,0.1),
+    labels = paste0(c(0,5,10,20,30,40,50,60,70,80,90,95,100),'%')) # paste0(seq(0,100,10),'%'))
+  global_prediction.df$bucket_unexpressed_0.1 <- cut(
+    x = global_prediction.df$percent_unexpressed,
+    breaks = c(-0.05, 0, seq(0.05,1,0.1), 1, 1.05), # seq(-0.05,1.05,0.1),
+    labels = paste0(c(0,5,10,20,30,40,50,60,70,80,90,95,100),'%')) # paste0(seq(0,100,10),'%'))
+  global_prediction.df$bucket_expressed_0.1 <- cut(
+    x = global_prediction.df$percent_expressed,
+    breaks = c(-0.05, 0, seq(0.05,1,0.1), 1, 1.05), # seq(-0.05,1.05,0.1),
+    labels = paste0(c(0,5,10,20,30,40,50,60,70,80,90,95,100),'%')) # paste0(seq(0,100,10),'%'))
+  
+  
+  global_prediction.df$status    <- p_cutoff
+  cluster_prediction.df$status   <- p_cutoff
+  
+  global_prediction.df$minclust  <- numcells
+  cluster_prediction.df$minclust <- numcells
+  
+  if(!is.na(tissue)) { 
+    global_prediction.df$tissue  <- tissue
+    global_prediction.df$nclust  <- ncol(prediction.df)
+    cluster_prediction.df$tissue <- tissue }
+  
+  result.list <- list(
+    prediction.df = prediction.df,
+    cluster_prediction.df = cluster_prediction.df,
+    global_prediction.df = global_prediction.df)
+  
+  return(result.list)
+  
+}
 ```
 
 # bucketing expression predictions
 
 ```{r}
-TS_global_prediction.df <- prediction.df_wrapper(TS_pseudobulk, p_cutoff = 'status5E-03')$global_prediction.df
+global_prediction.df <- prediction.df_wrapper(gene_expression.df, p_cutoff = 'status5E-03')$global_prediction.df
 ```
 
 # percent set of genes subsets (Core extension, N-linked branching, Elongation, Capping) expressed in some percent of cells
@@ -37,8 +154,8 @@ TS_global_prediction.df <- prediction.df_wrapper(TS_pseudobulk, p_cutoff = 'stat
 ```{r}
 data.df <- 
   merge(
-    TS_global_prediction.df[,c('gene','percent_expressed', "bucket_expressed_0.1")],
-    data.frame(readxl::read_xlsx('data/xlsx/Glycoenzymes.xlsx'))[,c('HGNC','Group')],
+    global_prediction.df[,c('gene','percent_expressed', "bucket_expressed_0.1")],
+    data.frame(readxl::read_xlsx('Glycoenzymes.xlsx'))[,c('HGNC','Group')],
     by.x = 'gene', by.y = 'HGNC')
 
 data.df <- unique(data.df)
@@ -61,19 +178,19 @@ ggplot(
   geom_area(
     data = . %>% filter(
       !grepl("GALNT|linked", Group)), 
-    aes(x = percent_expressed.y, fill = Group), 
+    aes(x = percent_expressed, fill = Group), 
     stat = "bin", 
     binwidth = 0.2) + 
   geom_text_repel(
     data= . %>% filter(
       grepl("^GALNT|^MGAT",gene)), 
-    aes(x = percent_expressed.y, y = 70, label = gene),
+    aes(x = percent_expressed, y = 70, label = gene),
     size = 3,
     max.overlaps = 10) +
   geom_point(
     data= . %>% filter(
       grepl("^GALNT|^MGAT",gene)),
-    aes(x = percent_expressed.y, y = 70), 
+    aes(x = percent_expressed, y = 70), 
     size = 1) +
   xlab('% of cells with gene expression') +
   ylab('# of genes expressed') + 

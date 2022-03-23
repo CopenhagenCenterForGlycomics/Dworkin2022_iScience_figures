@@ -1,17 +1,27 @@
 ```{r include=FALSE}
-library(edgeR)
-library(compositions)
-library(recount)
-library(biomaRt)
 library(ggplot2)
-library(ggrepel)
-library(dplyr)
 library(cowplot)
-library(readxl)
-library(colorspace)
+library(gridExtra)
+library(grid)
 ```
 
-#TODO read in tissue_results_all
+```{r eval=file.exists('tissue_results_log.Rds')}
+file.copy('../generate_bulk_data/tissue_results_log.Rds', getwd())
+tissue_results = readRDS('tissue_results_log.Rds')
+file.remove('tissue_results_log.Rds')
+```
+
+```{r eval=file.exists('tissue_results_log_tcga.Rds')}
+file.copy('../generate_bulk_data/tissue_results_log_tcga.Rds', getwd())
+tissue_results_tcga = readRDS('tissue_results_log_tcga.Rds')
+file.remove('tissue_results_log_tcga.Rds')
+```
+
+```{r}
+tissue_results_all = rbind(
+  cbind(tissue_results, source='gtex'),
+  cbind(tissue_results_tcga, source='tcga'))
+```
 
 ```{r}
 single_cell_to_bulk_plot = function(gene) {
@@ -141,7 +151,7 @@ gene_lookup = c('ALG2','ALG5','ST3GAL1','ST3GAL5')
 ```{r full_histograms, fig.height=10, fig.width=10, warning=FALSE}
 oldw = getOption("warn")
 options(warn=-1)
-gridobjs = gridExtra::arrangeGrob(grobs = lapply(gene_lookup, single_cell_to_bulk_plot), ncol=10)
+gridobjs = gridExtra::arrangeGrob(grobs = lapply(gene_lookup, single_cell_to_bulk_plot), ncol=2, nrow = 2)
 options(warn=oldw)
 grid::grid.draw(gridobjs)
 ```

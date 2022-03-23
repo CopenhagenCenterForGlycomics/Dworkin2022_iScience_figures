@@ -1,32 +1,131 @@
 
-```{r load, eval=!file.exists('glycogene_pseudobulkpresence.Rds')}
-filepath.char <- 'alldata_pseudobulkpresence.Rds'
-gene_expression.df <- readRDS(filepath.char)
+```{r}
+file.copy('../generate_single_cell_data/alldata_pseudobulkpresence.Rds', getwd())
+gene_expression.df <- readRDS('alldata_pseudobulkpresence.Rds')
 cutoff.int <- attributes(gene_expression.df)$cutoff.int
+file.remove('alldata_pseudobulkpresence.Rds')
 ```
 
-```{r, eval=!file.exists('glycogene_pseudobulkpresence.Rds')}
+```{r}
 # filtering for clusters of adequate size, annotation, and expression ----
-source('filtering.R')
-gene_expression.df <- filtering(gene_expression.df, taxon_id = '9606', glycogenes_only = T, other_genes = 'DAG1', gte200 = F, annotated = T)
-saveRDS(gene_expression.df, 'glycogene_pseudobulkpresence.Rds')
-remove(gene_expression.df)
+filtering <- function(gene_expression.df, taxon_id = c('9606', '10090'), glycogenes_only = F, other_genes = NULL, gte200 = T, annotated = T) {
+  
+  # filtering out non glycogenes ---
+  if(glycogenes_only) {
+    genes.vec <- switch(
+      taxon_id, 
+      '9606' = c(readLines('9606_glycogenes.txt'), other_genes),
+      '10090' = c(readLines('data/genesets/10090_glycogenes.txt'), other_genes))
+    gene_expression.df <- gene_expression.df[with(
+      gene_expression.df, gene %in% genes.vec),]
+  }
+  
+  # filtering out clusters with less than 200 cells ----
+  gene_expression.df <- 
+    if(gte200) {
+      gene_expression.df[with(
+        gene_expression.df,
+        cellnum >= 200),]
+    } else { gene_expression.df }
+  
+  # filtering out clusters with unknown celltype annotation ----
+  gene_expression.df <- 
+    if(isTRUE(annotated)) {
+      gene_expression.df <- gene_expression.df[with(
+        gene_expression.df, 
+        !(grepl(':Unknown', cluster))),]
+    } else if(isFALSE(annotated)) {
+      gene_expression.df <- gene_expression.df[with(
+        gene_expression.df, 
+        grepl(':Unknown', cluster)),]
+    } else { gene_expression.df }
+  
+  return(gene_expression.df)
+
+}
 ```
 
 ```{r}
-gene_expression.df <- readRDS('glycogene_pseudobulkpresence.Rds')
-gene_expression.df <- gene_expression.df[with(gene_expression.df, cellnum >= 200),]
-cutoff.int <- if(!exists('cutoff.int')) { 0.005376245 } else { cutoff.int }
-```
-
-# FUNCTION
-
-```{r}
-source('pvalue_functions.R')
+gene_expression.df <- filtering(gene_expression.df, taxon_id = '9606', glycogenes_only = T, other_genes = 'DAG1', gte200 = T, annotated = T)
 ```
 
 ```{r}
-prediction.df_wrapper
+prediction.df_wrapper <- function(gene_expression.df, p_cutoff, numcells = 200, tissue = NA) {
+  
+  prediction.df <- if(is.na(tissue)) { 
+    gene_expression.df[with(
+      gene_expression.df, 
+      cellnum >= numcells), 
+      c('cluster','cellnum','gene', p_cutoff)]
+  } else {
+    gene_expression.df[with(
+      gene_expression.df, 
+      cellnum >= numcells &
+        grepl(paste0(tissue,':.*$'), cluster)), 
+      c('cluster','cellnum','gene', p_cutoff)]
+  }
+  
+  prediction.df$cluster <- paste0(prediction.df$cluster, ':', prediction.df$cellnum)
+  prediction.df$cellnum <- NULL
+  prediction.df <- reshape2::dcast(
+    data = prediction.df, 
+    formula = gene ~ cluster, 
+    value.var = p_cutoff)
+  rownames(prediction.df) <- prediction.df$gene
+  prediction.df$gene <- NULL
+  
+  cluster_prediction.df <- data.frame(
+    cellnum = as.integer(gsub('^.*:','',colnames(prediction.df))),
+    num_unpredictable = colSums(prediction.df == 'unpredictable'),
+    num_expressed = colSums(prediction.df == 'expressed'),
+    num_unexpressed = colSums(prediction.df == 'unexpressed'))
+  cluster_prediction.df$bucket_unpredictable <- cut(
+    cluster_prediction.df$num_unpredictable,
+    breaks = seq(-11,231,22),
+    labels = paste0(seq(0,100,10),'%'))
+  cluster_prediction.df$bucket_numcell <- cut(
+    cluster_prediction.df$cellnum,
+    breaks = c(seq(100, 900, 100), seq(1000, 6000, 1000)))
+  
+  global_prediction.df <- data.frame(
+    gene = rownames(prediction.df),
+    percent_unpredictable = rowSums(prediction.df == 'unpredictable')/ncol(prediction.df),
+    percent_predictable =  1 - rowSums(prediction.df == 'unpredictable')/ncol(prediction.df),
+    percent_unexpressed = rowSums(prediction.df == 'unexpressed')/ncol(prediction.df),
+    percent_expressed = rowSums(prediction.df == 'expressed')/ncol(prediction.df))
+  global_prediction.df$bucket_unpredictable_0.1 <- cut(
+    x = global_prediction.df$percent_unpredictable,
+    breaks = c(-0.05, 0, seq(0.05,1,0.1), 1, 1.05), # seq(-0.05,1.05,0.1),
+    labels = paste0(c(0,5,10,20,30,40,50,60,70,80,90,95,100),'%')) # paste0(seq(0,100,10),'%'))
+  global_prediction.df$bucket_unexpressed_0.1 <- cut(
+    x = global_prediction.df$percent_unexpressed,
+    breaks = c(-0.05, 0, seq(0.05,1,0.1), 1, 1.05), # seq(-0.05,1.05,0.1),
+    labels = paste0(c(0,5,10,20,30,40,50,60,70,80,90,95,100),'%')) # paste0(seq(0,100,10),'%'))
+  global_prediction.df$bucket_expressed_0.1 <- cut(
+    x = global_prediction.df$percent_expressed,
+    breaks = c(-0.05, 0, seq(0.05,1,0.1), 1, 1.05), # seq(-0.05,1.05,0.1),
+    labels = paste0(c(0,5,10,20,30,40,50,60,70,80,90,95,100),'%')) # paste0(seq(0,100,10),'%'))
+  
+  
+  global_prediction.df$status    <- p_cutoff
+  cluster_prediction.df$status   <- p_cutoff
+  
+  global_prediction.df$minclust  <- numcells
+  cluster_prediction.df$minclust <- numcells
+  
+  if(!is.na(tissue)) { 
+    global_prediction.df$tissue  <- tissue
+    global_prediction.df$nclust  <- ncol(prediction.df)
+    cluster_prediction.df$tissue <- tissue }
+  
+  result.list <- list(
+    prediction.df = prediction.df,
+    cluster_prediction.df = cluster_prediction.df,
+    global_prediction.df = global_prediction.df)
+  
+  return(result.list)
+  
+}
 ```
 
 ```{r}
@@ -132,6 +231,6 @@ hist12 <- function(pvalue, minsize = 200, tiss = NA) {
 }
 ```
 
-```{r}
+```{r, fig.width=7, fig.height=7}
 hist12('status5E-03')
 ```

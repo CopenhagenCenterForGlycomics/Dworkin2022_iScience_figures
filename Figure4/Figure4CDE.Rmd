@@ -6,38 +6,157 @@ library(ggplot2)
 
 # Tabula 9606 isoenzyme expression
 
-```{r load, eval=!file.exists('glycogene_pseudobulkpresence.Rds')}
-filepath.char <- 'alldata_pseudobulkpresence.Rds'
-gene_expression.df <- readRDS(filepath.char)
-```
-
-```{r, eval=!file.exists('glycogene_pseudobulkpresence.Rds')}
-# filtering for clusters of adequate size, annotation, and expression ----
-source('filtering.R')
-gene_expression.df <- filtering(gene_expression.df, taxon_id = '9606', glycogenes_only = T, other_genes = 'DAG1', gte200 = F, annotated = T)
-saveRDS(gene_expression.df, 'glycogene_pseudobulkpresence.Rds')
-remove(gene_expression.df)
+```{r}
+file.copy('../generate_single_cell_data/alldata_pseudobulkpresence.Rds', getwd())
+gene_expression.df <- readRDS('alldata_pseudobulkpresence.Rds')
+file.remove('alldata_pseudobulkpresence.Rds')
 ```
 
 ```{r}
-gene_expression.df <- readRDS('glycogene_pseudobulkpresence.Rds')
-gene_expression.df <- gene_expression.df[with(gene_expression.df, cellnum >= 200),]
+# filtering for clusters of adequate size, annotation, and expression ----
+filtering <- function(gene_expression.df, taxon_id = c('9606', '10090'), glycogenes_only = F, other_genes = NULL, gte200 = T, annotated = T) {
+  
+  # filtering out non glycogenes ---
+  if(glycogenes_only) {
+    genes.vec <- switch(
+      taxon_id, 
+      '9606' = c(readLines('9606_glycogenes.txt'), other_genes),
+      '10090' = c(readLines('data/genesets/10090_glycogenes.txt'), other_genes))
+    gene_expression.df <- gene_expression.df[with(
+      gene_expression.df, gene %in% genes.vec),]
+  }
+  
+  # filtering out clusters with less than 200 cells ----
+  gene_expression.df <- 
+    if(gte200) {
+      gene_expression.df[with(
+        gene_expression.df,
+        cellnum >= 200),]
+    } else { gene_expression.df }
+  
+  # filtering out clusters with unknown celltype annotation ----
+  gene_expression.df <- 
+    if(isTRUE(annotated)) {
+      gene_expression.df <- gene_expression.df[with(
+        gene_expression.df, 
+        !(grepl(':Unknown', cluster))),]
+    } else if(isFALSE(annotated)) {
+      gene_expression.df <- gene_expression.df[with(
+        gene_expression.df, 
+        grepl(':Unknown', cluster)),]
+    } else { gene_expression.df }
+  
+  return(gene_expression.df)
+
+}
+```
+
+```{r}
+# filtering for clusters of adequate size, annotation, and expression ----
+gene_expression.df <- filtering(gene_expression.df, taxon_id = '9606', glycogenes_only = T, other_genes = 'DAG1', gte200 = T, annotated = T)
 gene_expression.df$germ_layer <- 'annotated'
 germ_layer.char <- 'annotated'
 ```
 
-# FUNCTIONS
-
 ```{r}
-source('expression_functions.R')
+germ_layer_epitope_combinatorics <- function(epitope.list, filter.list = NA, germ_layer.df) {
+  
+  germ_layer.df$gene <- toupper(germ_layer.df$gene)
+  germ_layer.df <- reshape2::dcast(germ_layer.df, cluster ~ gene, value.var = 'status5E-03')
+  germ_layer.df[germ_layer.df == 'unpredictable'] <- 'unexpressed'
+  
+  expression_status_summarizer <- function(g.vec, i.int, e.char) { rowSums(germ_layer.df[, g.vec, drop = FALSE] == e.char) >= i.int }
+  
+  epitope_combinatorics_summarizer <- function(b.list) { Reduce(function(x, y) { x & y }, b.list ) }
+  
+  # filter_combinatorics_summarizer <- function(b.list) { Reduce(function(x, y) { x | y }, b.list ) }
+  
+  epitope_combinatorics.vec <- 
+    if(is.na(filter.list)) {
+      sapply(epitope.list, function(g.list) {
+        clusters.bool <- 
+          epitope_combinatorics_summarizer(lapply(g.list, expression_status_summarizer, e.char = 'expressed', i.int = 1 ))
+        clusters.vec <- germ_layer.df$cluster[clusters.bool]
+        attributes(clusters.vec)$num_clusters <- sum(clusters.bool)/nrow(germ_layer.df)*100
+        clusters.vec
+      })
+    } else {
+      mapply(
+        function(g.list, f.list) {
+          clusters.bool <- 
+            Reduce(
+              function(x, y) { x & y },
+              list(
+                epitope_combinatorics_summarizer(
+                  lapply(g.list, expression_status_summarizer, e.char = 'expressed', i.int = 1)),
+                epitope_combinatorics_summarizer(
+                  mapply(expression_status_summarizer, f.list, lengths(f.list), e.char = 'unexpressed', SIMPLIFY = F))))
+          clusters.vec <- germ_layer.df$cluster[clusters.bool]
+          attributes(clusters.vec)$num_clusters <- sum(clusters.bool)/nrow(germ_layer.df)*100
+          clusters.vec },
+        epitope.list, filter.list, SIMPLIFY = T)
+    }
+  
+  return(epitope_combinatorics.vec)
+  
+}
 ```
 
 ```{r}
-germ_layer_epitope_combinatorics
-```
-
-```{r}
-pathway_expression_combinatoric_bespoke
+pathway_expression_combinatorics <- function(pathway.list, pathway.df, i, driver_isoform, mode) {
+  
+  # list of booleans for each gene's cluster-specific expression status ----
+  bool.list <- lapply(
+    pathway.list, function(gene.vec) {
+      pathway_subset.df <- pathway.df[with(pathway.df, gene %in% gene.vec),]
+      split(
+        with(pathway_subset.df, `status5E-03` == 'expressed'),
+        rep(gene.vec, each = nrow(pathway_subset.df))) })
+  
+  # dataframe of booleans for each gene's cluster-specific expression status ----
+  pathway.df <- data.frame(
+    sapply(bool.list, function(bool.df) { 
+      Reduce(function(x, y) { x | y }, bool.df) }))
+  
+  # dataframe of combinatorically generated geneset-specific expression ----
+  names(pathway.df) <- gsub('^.*\\.', '', names(pathway.df))
+  
+  driver_intersects.df <- 
+    setNames(
+      as.data.frame(
+        table(rowSums(pathway.df)[
+          rowSums(pathway.df[,grep(driver_isoform, colnames(pathway.df), value = T), drop = F]) > 0])),
+      c('degree','driver_intersects'))
+      
+  total_intersects.df <-
+    setNames(
+      as.data.frame(
+        table(rowSums(pathway.df))), 
+      c('degree','total_intersects'))
+  
+  plot.df <- merge(driver_intersects.df, total_intersects.df)
+  plot.df$no_intersects <- NA
+  plot.df <- rbind.data.frame(
+    data.frame(
+      degree = 0, 
+      driver_intersects = NA, 
+      total_intersects = NA, 
+      no_intersects = 229 - sum(plot.df$total_intersects)),
+    plot.df)
+  
+  plot.df$degree <- as.numeric(plot.df$degree)
+  
+  ggplot(plot.df) + 
+    geom_col(aes(x = degree, y = total_intersects), fill = 'lightgrey') +
+    geom_col(aes(x = degree, y = driver_intersects), fill = 'grey') +
+    geom_col(aes(x = degree, y = no_intersects), fill = 'black') +
+    scale_x_continuous(name = '# of isoforms in set', breaks = seq(0, ncol(pathway.df), 1), limits = c(0, ncol(pathway.df))) +
+    scale_y_continuous(name = '# of exclusive intersect', breaks = seq(0,230, 10), limits = c(0,230)) +
+    coord_cartesian(xlim = c(-0.5, ncol(pathway.df) + 0.5)) +
+    ggtitle(paste0(colnames(pathway.df), collapse = '|')) +
+    theme_minimal()
+  
+}
 ```
 
 # MAIN
@@ -123,55 +242,55 @@ annotated_isoenzyme.list <- list(
 
 ```{r annotated_isoenzyme3_bespoke, fig.height=3.5, fig.width=3.5, message=FALSE, warning=FALSE}
 
-pathway_expression_combinatoric_bespoke(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[3]]$gene), numeric = TRUE), paste0(prefix.vec[3], stringr::str_sort(unique(annotated_isoenzyme.list[[3]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[3]], 1, 'ST8SIA4', 'exclusive_intersection')
+pathway_expression_combinatorics(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[3]]$gene), numeric = TRUE), paste0(prefix.vec[3], stringr::str_sort(unique(annotated_isoenzyme.list[[3]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[3]], 1, 'ST8SIA4', 'exclusive_intersection')
 
 ```
 
 ```{r annotated_isoenzyme4_bespoke, fig.height=3.5, fig.width=3.5, message=FALSE, warning=FALSE}
 
-pathway_expression_combinatoric_bespoke(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[4]]$gene), numeric = TRUE), paste0(prefix.vec[4], stringr::str_sort(unique(annotated_isoenzyme.list[[4]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[4]], 1, 'ST6GALNAC3|4', 'exclusive_intersection')
+pathway_expression_combinatorics(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[4]]$gene), numeric = TRUE), paste0(prefix.vec[4], stringr::str_sort(unique(annotated_isoenzyme.list[[4]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[4]], 1, 'ST6GALNAC3|4', 'exclusive_intersection')
 
 ```
 
 ```{r annotated_isoenzyme7_bespoke, fig.height=3.5, fig.width=3.5, message=FALSE, warning=FALSE}
 
-pathway_expression_combinatoric_bespoke(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[20]]$gene), numeric = TRUE), paste0(prefix.vec[20], stringr::str_sort(unique(annotated_isoenzyme.list[[20]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[20]], 1, 'GALNT1|2|3|7|10|11', 'exclusive_intersection')
+pathway_expression_combinatorics(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[20]]$gene), numeric = TRUE), paste0(prefix.vec[20], stringr::str_sort(unique(annotated_isoenzyme.list[[20]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[20]], 1, 'GALNT1|2|3|7|10|11', 'exclusive_intersection')
 
 ```
 
 ```{r annotated_isoenzyme9_bespoke, fig.height=3.5, fig.width=3.5, message=FALSE, warning=FALSE}
 
-pathway_expression_combinatoric_bespoke(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[9]]$gene), numeric = TRUE), paste0(prefix.vec[9], stringr::str_sort(unique(annotated_isoenzyme.list[[9]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[9]], 1, 'B3GNT2', 'exclusive_intersection')
+pathway_expression_combinatorics(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[9]]$gene), numeric = TRUE), paste0(prefix.vec[9], stringr::str_sort(unique(annotated_isoenzyme.list[[9]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[9]], 1, 'B3GNT2', 'exclusive_intersection')
 
 ```
 
 ```{r annotated_isoenzyme13_bespoke, fig.height=3.5, fig.width=3.5, message=FALSE, warning=FALSE}
 
-pathway_expression_combinatoric_bespoke(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[13]]$gene), numeric = TRUE), paste0(prefix.vec[13], stringr::str_sort(unique(annotated_isoenzyme.list[[13]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[13]], 1, 'HS6ST1', 'exclusive_intersection')
+pathway_expression_combinatorics(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[13]]$gene), numeric = TRUE), paste0(prefix.vec[13], stringr::str_sort(unique(annotated_isoenzyme.list[[13]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[13]], 1, 'HS6ST1', 'exclusive_intersection')
 
 ```
 
 ```{r annotated_isoenzyme14_bespoke, fig.height=3.5, fig.width=3.5, message=FALSE, warning=FALSE}
 
-pathway_expression_combinatoric_bespoke(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[14]]$gene), numeric = TRUE), paste0(prefix.vec[14], stringr::str_sort(unique(annotated_isoenzyme.list[[14]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[14]], 1, 'NDST1|2', 'exclusive_intersection')
+pathway_expression_combinatorics(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[14]]$gene), numeric = TRUE), paste0(prefix.vec[14], stringr::str_sort(unique(annotated_isoenzyme.list[[14]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[14]], 1, 'NDST1|2', 'exclusive_intersection')
 
 ```
 
 ```{r annotated_isoenzyme15_bespoke, fig.height=3.5, fig.width=3.5, message=FALSE, warning=FALSE}
 
-pathway_expression_combinatoric_bespoke(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[15]]$gene), numeric = TRUE), paste0(prefix.vec[15], stringr::str_sort(unique(annotated_isoenzyme.list[[15]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[15]], 1, 'HS3ST3B1', 'exclusive_intersection')
+pathway_expression_combinatorics(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[15]]$gene), numeric = TRUE), paste0(prefix.vec[15], stringr::str_sort(unique(annotated_isoenzyme.list[[15]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[15]], 1, 'HS3ST3B1', 'exclusive_intersection')
 
 ```
 
 ```{r annotated_isoenzyme18_bespoke, fig.height=3.5, fig.width=3.5, message=FALSE, warning=FALSE}
 
-pathway_expression_combinatoric_bespoke(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[18]]$gene), numeric = TRUE), paste0(prefix.vec[18], stringr::str_sort(unique(annotated_isoenzyme.list[[18]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[18]], 1, 'CHST2|5', 'exclusive_intersection')
+pathway_expression_combinatorics(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[18]]$gene), numeric = TRUE), paste0(prefix.vec[18], stringr::str_sort(unique(annotated_isoenzyme.list[[18]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[18]], 1, 'CHST2|5', 'exclusive_intersection')
 
 ```
 
 ```{r annotated_isoenzyme19_bespoke, fig.height=3.5, fig.width=3.5, message=FALSE, warning=FALSE}
 
-pathway_expression_combinatoric_bespoke(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[19]]$gene), numeric = TRUE), paste0(prefix.vec[19], stringr::str_sort(unique(annotated_isoenzyme.list[[19]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[19]], 1, 'FUT4', 'exclusive_intersection')
+pathway_expression_combinatorics(as.list(setNames(stringr::str_sort(unique(annotated_isoenzyme.list[[19]]$gene), numeric = TRUE), paste0(prefix.vec[19], stringr::str_sort(unique(annotated_isoenzyme.list[[19]]$gene), numeric = TRUE)))), annotated_isoenzyme.list[[19]], 1, 'FUT4', 'exclusive_intersection')
 
 ```
 
@@ -179,7 +298,7 @@ pathway_expression_combinatoric_bespoke(as.list(setNames(stringr::str_sort(uniqu
 
 ```{r}
 # setting up external data for computing percent of 32 select epitopes in each germ layer subset ----
-epitope.df <- as.data.frame(readxl::read_xlsx('data/xlsx/epitope_combinatorics.xlsx', sheet = "lacto,globo,ganglio,core"))
+epitope.df <- as.data.frame(readxl::read_xlsx('epitope_combinatorics.xlsx', sheet = "lacto,globo,ganglio,core"))
 ```
 
 ```{r}
@@ -257,7 +376,7 @@ knoter::excel('minimum_epitope_set' = epitope.df)
 # percent expression capacity co-occurrence of epitope subsets (relative to lacNAc type 1 and type 2)
 
 ```{r }
-data.df <- readxl::read_xlsx('data/xlsx/epitope_combinatorics_relative_expression.xlsx')
+data.df <- readxl::read_xlsx('epitope_combinatorics_relative_expression.xlsx')
 ```
 
 # Figure4E

@@ -1,0 +1,390 @@
+```{r include=FALSE}
+pseudopresence_model.lm <- readRDS('lm_glycogene_pseudopresence.Rds')
+compute_sample_pop <- function(pseudobulk, mu_model.lm, sd_model.lm) {
+
+  mu <-
+    stats::predict(
+      mu_model.lm,
+      newdata = data.frame(pseudobulk_mean = pseudobulk),
+      se.fit = TRUE,
+      level = 0.95,
+      interval = "confidence")$fit[,'fit']
+
+  s <-
+    stats::predict(
+      sd_model.lm,
+      newdata = data.frame(pseudobulk = pseudobulk),
+      se.fit = TRUE,
+      level = 0.95,
+      interval = "confidence")$fit[,'fit']
+
+  return(list(mu = mu, s = s))
+
+}
+```
+
+```{r include = FALSE}
+## computing pvalue for each glycogene on each cluster
+compute_pseudopresence_pvalue <- function(pseudobulk, mu, s, n) {
+
+  # n chosen based on the number of pseudobulks that model is fit to
+  ts  <- (mu - pseudobulk)/(s/sqrt(n))
+  p   <- 2*pt(-abs(ts), n-1)
+
+  return(p)
+
+}
+```
+
+```{r include=FALSE}
+expression_model.lm <- readRDS('lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds')
+cutoff.int <- mean(expression_model.lm$xy.df$y[1:7]) 
+
+compute_threshold <- function(ncells) {
+  
+  s <-
+    stats::predict(
+      expression_model.lm$model2.lm,
+      newdata = data.frame(x = ncells),
+      se.fit = TRUE,
+      level = 0.95,
+      interval = "confidence")$fit[,'fit']
+  
+  return(s)
+  
+}
+```
+
+```{r include=FALSE}
+compute_pvalue <- function(pseudobulk, threshold) {
+  
+  n   <- 7 # chosen based on the number of pseudobulk sizes that model is fit to
+  ts  <- (cutoff.int - pseudobulk)/(threshold/sqrt(n)) 
+  p   <- 2*pt(-abs(ts), n-1)
+  
+  return(p)
+  
+}
+  
+expression_status_call <- function(threshold,pseudobulk) {
+  if (is.na(pseudobulk)) {
+    return("unexpressed")
+  }
+  if (pseudobulk == 0) {
+    return("unexpressed")
+  }
+  
+  expression_status_call_raw(threshold,pseudobulk)
+}
+
+expression_status_call_raw <- function(threshold, pseudobulk) {
+  
+  expression <- pseudobulk > cutoff.int
+  pvalue     <- compute_pvalue(pseudobulk, threshold)
+  if (is.na(expression)) {
+    return('unexpressed')
+  }
+  status <- if(expression) { 'expressed' } else { 'unexpressed' }
+  status <- if(pvalue > 5E-03) { 'unpredictable' } else { status }
+  
+  return(status)
+}
+
+is_expressed <- function(pseudobulks) {
+  cells = names(pseudobulks)
+  expressed = sapply(cells, function(cell) { expression_status_call( attributes(alldata_pseudobulk)$thresholds[cell], pseudobulks[cell] ) })
+  ifelse(expressed == 'expressed', TRUE, ifelse(expressed == 'unexpressed',FALSE,NA))
+}
+```
+
+# generating pseudobulkpresence dataset for tabula sapiens 
+
+```{r}
+
+alldata_pseudobulk = readRDS('alldata_human.Rds')
+alldata_pseudopresence = readRDS('alldata_human_pseudopresence.Rds')
+
+```
+
+```{r}
+
+attributes(alldata_pseudobulk)$thresholds = sapply(attributes(alldata_pseudobulk)$clustersize, compute_threshold)
+
+```
+
+```{r}
+
+alldata_pseudobulk_clean = alldata_pseudobulk
+alldata_pseudopresence_clean = alldata_pseudopresence
+
+```
+
+```{r}
+
+colnames(alldata_pseudobulk_clean) = dplyr::recode(colnames(alldata_pseudobulk_clean), TMEM5='RXYLT1',TMEM246='PGAP4',KDELC1='POGLUT2',KDELC2='POGLUT3')
+colnames(alldata_pseudopresence_clean) = dplyr::recode(colnames(alldata_pseudopresence_clean), TMEM5='RXYLT1',TMEM246='PGAP4',KDELC1='POGLUT2',KDELC2='POGLUT3')
+
+```
+
+```{r}
+
+required_genes=c('DPAGT1','ALG2')
+passing_cells = apply(apply(alldata_pseudobulk_clean[,required_genes],2,is_expressed) ,1,all)
+passing_cells = passing_cells & apply(apply(alldata_pseudobulk_clean[,c('ALG13','ALG14')],2,is_expressed),1,any)
+
+```
+
+```{r}
+
+alldata_pseudobulk_clean = alldata_pseudobulk_clean[which(passing_cells),]
+alldata_pseudopresence_clean = alldata_pseudopresence_clean[which(passing_cells),]
+
+```
+
+```{r}
+
+attributes(alldata_pseudobulk_clean)$clustersize <- attributes(alldata_pseudobulk)$clustersize[which(passing_cells)]
+attributes(alldata_pseudobulk_clean)$thresholds <- attributes(alldata_pseudobulk)$thresholds[which(passing_cells)]
+
+```
+
+```{r}
+
+remove(alldata_pseudobulk)
+remove(alldata_pseudopresence)
+
+```
+
+```{r}
+
+cluster_threshold_cellnum.df <- cbind.data.frame(
+  cluster = rep(rownames(alldata_pseudobulk_clean), each = ncol(alldata_pseudobulk_clean)), 
+  threshold = rep(attributes(alldata_pseudobulk_clean)$thresholds, each = ncol(alldata_pseudobulk_clean)),
+  cellnum = rep(attributes(alldata_pseudobulk_clean)$clustersize, each = ncol(alldata_pseudobulk_clean)))
+
+```
+
+```{r}
+
+alldata_pseudobulk_clean_melt <- reshape2:::melt.matrix(t(alldata_pseudobulk_clean), varnames = c('gene','cluster'), value.name = 'pseudobulk')
+alldata_pseudobulk_clean_melt <- within(alldata_pseudobulk_clean_melt, {
+  cluster = as.character(cluster)
+  gene = as.character(gene) })
+remove(alldata_pseudobulk_clean)
+
+```
+
+```{r}
+
+alldata_pseudopresence_clean_melt <- reshape2:::melt.matrix(t(alldata_pseudopresence_clean), varnames = c('gene','cluster'), value.name = 'pseudopresence')
+alldata_pseudopresence_clean_melt <- within(alldata_pseudopresence_clean_melt, {
+  cluster = as.character(cluster)
+  gene = as.character(gene) })
+remove(alldata_pseudopresence_clean)
+
+```
+
+```{r}
+
+alldata_clean_melt <- 
+  if(all(cluster_threshold_cellnum.df$cluster == alldata_pseudobulk_clean_melt$cluster) &
+     all(gsub('SMALL_', '', alldata_pseudobulk_clean_melt$cluster) == alldata_pseudopresence_clean_melt$cluster) &
+     all(alldata_pseudobulk_clean_melt$gene == alldata_pseudopresence_clean_melt$gene)) { 
+    cbind.data.frame(
+      alldata_pseudobulk_clean_melt, 
+      pseudopresence = alldata_pseudopresence_clean_melt$pseudopresence, 
+      cluster_threshold_cellnum.df[,c('threshold','cellnum')]) 
+  } else { stop ('rows are out of order') }
+
+remove(cluster_threshold_cellnum.df)
+remove(alldata_pseudobulk_clean_melt)
+remove(alldata_pseudopresence_clean_melt)
+
+```
+  
+```{r}
+
+alldata_clean_melt$orig.NA <- is.na(alldata_clean_melt$pseudobulk)
+alldata_clean_melt$pseudobulk[is.na(alldata_clean_melt$pseudobulk)] <- 0
+alldata_clean_melt$pvalue <- with(alldata_clean_melt, compute_pvalue(pseudobulk, threshold))
+alldata_clean_melt$`status5E-03` <- with(
+  alldata_clean_melt, 
+  addNA(factor(
+    ifelse(
+      pvalue > 5E-03, 'unpredictable', 
+      ifelse(pseudobulk > cutoff.int, 'expressed', 'unexpressed')), 
+    levels = rev(c('unexpressed','unpredictable','expressed')))))
+
+```
+
+```{r}
+# computing gene ubiquitous status via pseudopresence model ----
+predicted_percent_pseudopresence <-
+  compute_sample_pop(
+    alldata_clean_melt$pseudobulk,
+    pseudopresence_model.lm$glycogene_mean_fit.lm,
+    pseudopresence_model.lm$glycogene_sd_fit.lm)
+
+alldata_clean_melt$pseudopresence.pred_mu <- (predicted_percent_pseudopresence$mu/100) * alldata_clean_melt$cellnum
+alldata_clean_melt$pseudopresence.pred_sd <- (predicted_percent_pseudopresence$s/100) * alldata_clean_melt$cellnum
+alldata_clean_melt$pseudopresence.pval <-
+  compute_pseudopresence_pvalue(
+    alldata_clean_melt$pseudopresence,
+    alldata_clean_melt$pseudopresence.pred_mu,
+    alldata_clean_melt$pseudopresence.pred_sd,
+    nrow(pseudopresence_model.lm$glycogene_sd_fit.lm$model))
+
+```
+
+```{r}
+
+attributes(alldata_clean_melt)$cutoff.int <- cutoff.int
+attributes(alldata_clean_melt)$repo = "glyco_atlas_data/generate_pseudobulkpresence"
+attributes(alldata_clean_melt)$revision = system("echo \"`git symbolic-ref HEAD 2> /dev/null | cut -b 12-`-`git describe --always --dirty`\"",intern=T)
+saveRDS(alldata_clean_melt, 'alldata_pseudobulkpresence.Rds')
+
+```
+
+# generating pseudobulkpresence dataset for panglao musculus 
+
+```{r}
+
+ortho_trans_table=with(read.delim('mouse_orthology_human_genes.tsv'),setNames(mouse_symbol,human_symbol))
+glycogenes=read.delim('glycogenes.tsv',header=F)$V1
+
+```
+
+```{r}
+
+alldata_pseudobulk = readRDS('alldata_mouse.Rds')
+
+```
+
+```{r}
+
+attributes(alldata_pseudobulk)$thresholds = sapply(attributes(alldata_pseudobulk)$clustersize, compute_threshold)
+
+```
+
+```{r}
+
+alldata_pseudobulk_clean = alldata_pseudobulk
+
+```
+
+```{r}
+
+required_genes=c('Dpagt1','Alg2')
+passing_cells = apply(apply(alldata_pseudobulk_clean[,required_genes],2,is_expressed) ,1,all)
+passing_cells = passing_cells & apply(apply(alldata_pseudobulk_clean[,c('Alg13','Alg14')],2,is_expressed),1,any)
+
+```
+
+```{r}
+
+alldata_pseudobulk_clean = alldata_pseudobulk_clean[which(passing_cells),]
+
+```
+
+```{r}
+
+colnames(alldata_pseudobulk_clean) = dplyr::recode(colnames(alldata_pseudobulk_clean), Wbscr17='Galnt17', Tmem5='Rxylt1', Tmem246='Pgap4', Kdelc1='Poglut2', Kdelc2='Poglut3')
+
+```
+
+```{r}
+
+alldata_pseudobulk_clean = alldata_pseudobulk_clean[,c(intersect(ortho_trans_table[glycogenes], colnames(alldata_pseudobulk_clean)),'Dag1')]
+
+```
+
+```{r}
+
+colnames(alldata_pseudobulk_clean) = dplyr::recode(colnames(alldata_pseudobulk_clean), Large='Large1', Gyltl1b='Large2')
+
+```
+
+```{r}
+
+attributes(alldata_pseudobulk_clean)$clustersize <- attributes(alldata_pseudobulk)$clustersize[which(passing_cells)]
+attributes(alldata_pseudobulk_clean)$thresholds <- attributes(alldata_pseudobulk)$thresholds[which(passing_cells)]
+
+```
+
+```{r}
+
+remove(alldata_pseudobulk)
+
+```
+
+```{r}
+
+cluster_threshold_cellnum.df <- cbind.data.frame(
+  cluster = rep(rownames(alldata_pseudobulk_clean), each = ncol(alldata_pseudobulk_clean)), 
+  threshold = rep(attributes(alldata_pseudobulk_clean)$thresholds, each = ncol(alldata_pseudobulk_clean)),
+  cellnum = rep(attributes(alldata_pseudobulk_clean)$clustersize, each = ncol(alldata_pseudobulk_clean)))
+
+```
+
+```{r}
+
+alldata_pseudobulk_clean_melt <- reshape2:::melt.matrix(t(alldata_pseudobulk_clean), varnames = c('gene','cluster'), value.name = 'pseudobulk')
+alldata_pseudobulk_clean_melt <- within(alldata_pseudobulk_clean_melt, {
+  cluster = as.character(cluster)
+  gene = as.character(gene) })
+remove(alldata_pseudobulk_clean)
+
+```
+
+```{r}
+
+alldata_clean_melt <- 
+  if(all(cluster_threshold_cellnum.df$cluster == alldata_pseudobulk_clean_melt$cluster)) { 
+    cbind.data.frame(
+      alldata_pseudobulk_clean_melt, 
+      cluster_threshold_cellnum.df[,c('threshold','cellnum')]) 
+  } else { stop ('rows are out of order') }
+
+remove(cluster_threshold_cellnum.df)
+remove(alldata_pseudobulk_clean_melt)
+
+```
+  
+```{r}
+
+alldata_clean_melt$orig.NA <- is.na(alldata_clean_melt$pseudobulk)
+alldata_clean_melt$pseudobulk[is.na(alldata_clean_melt$pseudobulk)] <- 0
+alldata_clean_melt$pvalue <- with(alldata_clean_melt, compute_pvalue(pseudobulk, threshold))
+alldata_clean_melt$`status5E-03` <- with(
+  alldata_clean_melt, 
+  addNA(factor(
+    ifelse(
+      pvalue > 5E-03, 'unpredictable', 
+      ifelse(pseudobulk > cutoff.int, 'expressed', 'unexpressed')), 
+    levels = rev(c('unexpressed','unpredictable','expressed')))))
+
+```
+
+```{r}
+# computing gene ubiquitous status via pseudopresence model ----
+predicted_percent_pseudopresence <-
+  compute_sample_pop(
+    alldata_clean_melt$pseudobulk,
+    pseudopresence_model.lm$glycogene_mean_fit.lm,
+    pseudopresence_model.lm$glycogene_sd_fit.lm)
+
+alldata_clean_melt$pseudopresence.pred_mu <- (predicted_percent_pseudopresence$mu/100) * alldata_clean_melt$cellnum
+alldata_clean_melt$pseudopresence.pred_sd <- (predicted_percent_pseudopresence$s/100) * alldata_clean_melt$cellnum
+
+```
+
+```{r}
+
+attributes(alldata_clean_melt)$cutoff.int <- cutoff.int
+attributes(alldata_clean_melt)$repo = "glyco_atlas_data/generate_pseudobulkpresence"
+attributes(alldata_clean_melt)$revision = system("echo \"`git symbolic-ref HEAD 2> /dev/null | cut -b 12-`-`git describe --always --dirty`\"",intern=T)
+saveRDS(alldata_clean_melt, 'glycogene_mouse_panglaodb_pseudobulkpresence.Rds')
+remove(alldata_clean_melt)
+
+```
+
