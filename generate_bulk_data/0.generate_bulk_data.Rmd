@@ -11,32 +11,17 @@ library(readxl)
 library(colorspace)
 ```
 
-```{r include=FALSE}
-lookup_symbol = function(gene,genedata) {
-  gene=paste('^',gene,sep='')
-  rownames(subset(as.data.frame(rowData(genedata)),grepl(gene,symbol) & !grepl('-AS',symbol)))
-}
-```
-
-```{r eval=file.exists('glycogene_lookup.Rds')}
+```{r}
 glycogene_lookup=readRDS('glycogene_lookup.Rds')
 ```
 
-```{r eval=file.exists('seg_lookup.Rds')}
+```{r}
 seg_lookup = readRDS('seg_lookup.Rds')
 ```
 
-```{r eval=file.exists('tissue_results_log_tcga.Rds')}
-tissue_results_tcga = readRDS('tissue_results_log_tcga.Rds')
-```
-
-```{r eval=file.exists('tissue_results_log.Rds')}
-tissue_results = readRDS('tissue_results_log.Rds')
-```
-
-```{r include=FALSE}
+```{r}
 readTissueData = function(rse_gene,tissue,samples) {
-  
+
   mtx = assay(rse_gene)[,samples]
 
   # We want to normalise the count data per tissue set
@@ -45,7 +30,7 @@ readTissueData = function(rse_gene,tissue,samples) {
   # Apply the clr to smooth out the data a bit
   count_clr = apply(cpm(y),2,clr)
   count_log = apply(cpm(y)+1,2,log)
-  
+
   rownames(count_log) = stringr::str_replace(rownames(count_log),'\\..*$','')
   rownames(count_clr) = rownames(count_log)
 
@@ -57,24 +42,24 @@ readTissueData = function(rse_gene,tissue,samples) {
   rownames(glycogenes_clr) = rownames(genes)
 
   # We want to collect the mean clr, sd of the clr, IQR of the clr
-  # This will give us the sets of fold-changes for genes that we expect to 
+  # This will give us the sets of fold-changes for genes that we expect to
   # see within normal tissue function -> Envelope for cell-level change
-  
+
   glycogenes = genes[intersect(rownames(genes), names(gene_lookup)),]
   glycogenes_clr = glycogenes_clr[intersect(rownames(genes), names(gene_lookup)),]
-  
+
   genenames = rownames(glycogenes)
-  
+
   data = reshape2:::melt.matrix(glycogenes, varnames = c('gene','sample_id'), value.name = 'log_cpm', as.is = T)
 
   ref_data = data[data$gene %in% names(seg_lookup),]
   ref_data = aggregate.data.frame(
-    x = list(seg_geom_avg = ref_data$log_cpm), 
-    by = list(sample_id = ref_data$sample_id), 
+    x = list(seg_geom_avg = ref_data$log_cpm),
+    by = list(sample_id = ref_data$sample_id),
     FUN = function(x) { exp(mean(log(x))) })
-  
+
   data = merge(data, ref_data, by = 'sample_id')
-  
+
   data$rel_frac = data$log_cpm/data$seg_geom_avg
   data$rel_diff = data$log_cpm-data$seg_geom_avg
   data$seg_geom_avg <- NULL
@@ -86,7 +71,7 @@ readTissueData = function(rse_gene,tissue,samples) {
     samples = ncol(glycogenes),
     gene = genenames,
     ref_gene = 'all')
-  
+
   stats = merge(data, stats, by = c('gene'))
   stats$tissue = tissue
 
@@ -94,7 +79,7 @@ readTissueData = function(rse_gene,tissue,samples) {
 }
 ```
 
-```{r eval=!file.exists('tissue_results_log_tcga.Rds')}
+```{r}
 load('TCGA/rse_gene.Rdata')
 
 coldata = subset(colData(rse_gene),gdc_cases.samples.sample_type == 'Solid Tissue Normal')
@@ -118,7 +103,7 @@ attributes(tissue_results_tcga)$revision = system("git describe --always --dirty
 saveRDS(tissue_results_tcga,file = 'tissue_results_log_tcga.Rds')
 ```
 
-```{r eval=!file.exists('tissue_results_log.Rds')}
+```{r}
 load('SRP012682/rse_gene_new.Rdata')
 
 # Group by tissue
@@ -136,3 +121,4 @@ attributes(tissue_results)$repo = "glycogenome_expression_variation"
 attributes(tissue_results)$revision = system("git describe --always --dirty",intern=T)
 saveRDS(tissue_results,file = 'tissue_results_log.Rds')
 ```
+

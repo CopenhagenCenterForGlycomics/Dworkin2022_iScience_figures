@@ -6,6 +6,7 @@
 require(dplyr)
 require(ggrepel)
 require(ggplot2)
+library(readxl)
 ```
 
 # loading tabula sapiens data

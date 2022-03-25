@@ -1,18 +1,20 @@
+
 ```{r include=FALSE}
+library(matrixStats)
 library(ggplot2)
 library(cowplot)
 library(gridExtra)
 library(grid)
 ```
 
-```{r eval=file.exists('tissue_results_log.Rds')}
-file.copy('../generate_bulk_data/tissue_results_log.Rds', getwd())
+```{r}
+file.copy('../generate_bulk_data/tissue_results_log.Rds', 'tissue_results_log.Rds')
 tissue_results = readRDS('tissue_results_log.Rds')
 file.remove('tissue_results_log.Rds')
 ```
 
-```{r eval=file.exists('tissue_results_log_tcga.Rds')}
-file.copy('../generate_bulk_data/tissue_results_log_tcga.Rds', getwd())
+```{r}
+file.copy('../generate_bulk_data/tissue_results_log_tcga.Rds', 'tissue_results_log_tcga.Rds')
 tissue_results_tcga = readRDS('tissue_results_log_tcga.Rds')
 file.remove('tissue_results_log_tcga.Rds')
 ```

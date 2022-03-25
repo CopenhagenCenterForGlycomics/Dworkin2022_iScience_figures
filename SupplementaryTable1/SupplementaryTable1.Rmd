@@ -1,6 +1,10 @@
 # Supplementary Table 1 generation
 
 ```{r}
+library(writexl)
+```
+
+```{r}
 file.copy('../generate_bulk_data/tissue_results_log.Rds', getwd())
 tissue_results_log <- readRDS('tissue_results_log.Rds')
 file.remove('tissue_results_log.Rds')

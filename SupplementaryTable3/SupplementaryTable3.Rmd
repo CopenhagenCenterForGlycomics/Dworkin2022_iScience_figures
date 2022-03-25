@@ -6,10 +6,11 @@ library(dplyr)
 library(tidyr)
 library(reshape2)
 library(Matrix)
+library(writexl)
 ```
 
 ```{r include=FALSE}
-file.copy('../generate_single_cell_data/lm_glycogene_pseudopresence.Rds', getwd())
+file.copy('../generate_single_cell_data/lm_glycogene_pseudopresence.Rds', 'lm_glycogene_pseudopresence.Rds')
 pseudopresence_model.lm <- readRDS('lm_glycogene_pseudopresence.Rds')
 file.remove('lm_glycogene_pseudopresence.Rds')
 
@@ -51,7 +52,7 @@ compute_pseudopresence_pvalue <- function(pseudobulk, mu, s, n) {
 
 ```{r include=FALSE}
 
-file.copy('../generate_single_cell_data/lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds', getwd())
+file.copy('../generate_single_cell_data/lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds', 'lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds')
 expression_model.lm <- readRDS('lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds')
 cutoff.int <- mean(expression_model.lm$xy.df$y[1:7]) 
 file.remove('lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds')
@@ -170,15 +171,15 @@ compute_ranges <- function(reference_data) {
 # loading glycogenes
 
 ```{r}
-file.copy('../generate_single_cell_data/seg_lookup.Rds', getwd())
+file.copy('../generate_single_cell_data/seg_lookup.Rds', 'seg_lookup.Rds')
 segs = unique(names(readRDS('seg_lookup.Rds')))
 file.remove('seg_lookup.Rds')
 
-file.copy('../generate_single_cell_data/mouse_orthology_human_genes.tsv', getwd())
+file.copy('../generate_single_cell_data/mouse_orthology_human_genes.tsv', 'mouse_orthology_human_genes.tsv')
 ortho_trans_table=with(read.delim('mouse_orthology_human_genes.tsv'),setNames(mouse_symbol,human_symbol))
 file.remove('mouse_orthology_human_genes.tsv')
 
-file.copy('../generate_single_cell_data/glycogenes.tsv', getwd())
+file.copy('../generate_single_cell_data/glycogenes.tsv', 'glycogenes.tsv')
 glycogenes=read.delim('glycogenes.tsv',header=F)$V1
 file.remove('glycogenes.tsv')
 ```
@@ -187,7 +188,7 @@ file.remove('glycogenes.tsv')
 
 ```{r}
 
-file.copy('../generate_bulk_data/tissue_results_log.Rds', getwd())
+file.copy('../generate_bulk_data/tissue_results_log.Rds', 'tissue_results_log.Rds')
 GTEx_bulk <- readRDS('tissue_results_log.Rds')
 GTEx_bulk <- subset(GTEx_bulk, ref_gene == 'all' & samples > 10 & log_cpm > log(2))
 GTEx_bulk$ref_gene <- NULL
@@ -200,7 +201,7 @@ file.remove('tissue_results_log.Rds')
 
 ```{r}
 
-file.copy('../generate_bulk_data/tissue_results_log_tcga.Rds', getwd())
+file.copy('../generate_bulk_data/tissue_results_log_tcga.Rds', 'tissue_results_log_tcga.Rds')
 TCGA_bulk <- readRDS('tissue_results_log_tcga.Rds')
 TCGA_bulk <- subset(TCGA_bulk, ref_gene == 'all' & samples > 10 & log_cpm > log(2))
 TCGA_bulk$ref_gene <- NULL
@@ -241,7 +242,7 @@ bulk_glycogenes <- sort(unique(bulk$gene))
 
 ```{r}
 
-file.copy('../generate_single_cell_data/pseudobulk_log_seg_norm.Rds', getwd())
+file.copy('../generate_single_cell_data/pseudobulk_log_seg_norm.Rds', 'pseudobulk_log_seg_norm.Rds')
 glycogene_segnorm.df <- readRDS("pseudobulk_log_seg_norm.Rds")
 file.remove('pseudobulk_log_seg_norm.Rds')
 
@@ -263,7 +264,7 @@ remove(glycogene_segnorm.df)
 
 ```{r}
 
-file.copy('../generate_single_cell_data/alldata_clean_human_clr_sparse.Rds', getwd())
+file.copy('../generate_single_cell_data/alldata_clean_human_clr_sparse.Rds', 'alldata_clean_human_clr_sparse.Rds')
 alldata_clean_human_clr_sparse.sm <- readRDS('alldata_clean_human_clr_sparse.Rds')
 file.remove('alldata_clean_human_clr_sparse.Rds')
 
@@ -312,7 +313,7 @@ glycogene_human_clr.df$tissue <- gsub('_cluster.*$', '', glycogene_human_clr.df$
 
 ```{r}
 
-file.copy('../generate_single_cell_data/alldata_pseudobulkpresence.Rds', getwd())
+file.copy('../generate_single_cell_data/alldata_pseudobulkpresence.Rds', 'alldata_pseudobulkpresence.Rds')
 alldata_pseudobulkpresence.df <- readRDS('alldata_pseudobulkpresence.Rds')
 file.remove('alldata_pseudobulkpresence.Rds')
 
@@ -813,7 +814,7 @@ glycogene_human_cell.df <- dplyr::select(
 
 ```{r}
 
-file.copy('../generate_single_cell_data/pseudobulk_log_seg_norm.Rds', getwd())
+file.copy('../generate_single_cell_data/pseudobulk_log_seg_norm.Rds', 'pseudobulk_log_seg_norm.Rds')
 glycogene_segnorm.df <- readRDS('pseudobulk_log_seg_norm.Rds')
 file.remove('pseudobulk_log_seg_norm.Rds')
 
@@ -839,7 +840,7 @@ remove(glycogene_segnorm.df)
 
 ```{r}
 
-file.copy('../generate_single_cell_data/alldata_clean_mouse_clr_sparse.Rds', getwd())
+file.copy('../generate_single_cell_data/alldata_clean_mouse_clr_sparse.Rds', 'alldata_clean_mouse_clr_sparse.Rds')
 alldata_clean_mouse_clr_sparse.sm <- readRDS('alldata_clean_mouse_clr_sparse.Rds')
 file.remove('alldata_clean_mouse_clr_sparse.Rds')
 
@@ -892,7 +893,7 @@ remove(glycogene_clean_mouse_clr_sparse.sm)
 
 ```{r}
 
-file.copy('../generate_single_cell_data/glycogene_mouse_panglaodb_pseudobulkpresence.Rds', getwd())
+file.copy('../generate_single_cell_data/glycogene_mouse_panglaodb_pseudobulkpresence.Rds', 'glycogene_mouse_panglaodb_pseudobulkpresence.Rds')
 glycogene_mouse_pseudobulkpresence.df <- readRDS('glycogene_mouse_panglaodb_pseudobulkpresence.Rds')
 file.remove('glycogene_mouse_panglaodb_pseudobulkpresence.Rds')
 

@@ -2,6 +2,8 @@
 
 ```{r}
 library(ggplot2)
+library(writexl)
+library(readxl)
 ```
 
 # Tabula 9606 isoenzyme expression
@@ -369,8 +371,10 @@ epitope.df$annotated <- unlist(lapply(epitope_combinatorics.list, attributes))
 
 # Figure4D 
 
-```{r epitope.df, message=F, warning=F}
-knoter::excel('minimum_epitope_set' = epitope.df)
+```{r}
+writexl::write_xlsx(
+  x = list('minimum_epitope_set' = epitope.df),
+  path = 'minimum_epitope_set.xlsx')
 ```
 
 # percent expression capacity co-occurrence of epitope subsets (relative to lacNAc type 1 and type 2)

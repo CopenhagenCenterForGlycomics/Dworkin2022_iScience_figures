@@ -1,8 +1,8 @@
 
 ```{r}
 if(!file.exists("alldata_human.Rds")){
-  rds = list.files(path='rds/', pattern='.Rds')
-  raw_alldata = sapply(paste('rds/',rds,sep=''),readRDS)
+  rds = list.files(path='rds_human/', pattern='.Rds')
+  raw_alldata = sapply(paste('rds_human/',rds,sep=''),readRDS)
 }
 ```
 

@@ -1,6 +1,6 @@
 
 ```{r}
-file.copy('../generate_single_cell_data/alldata_pseudobulkpresence.Rds', getwd())
+file.copy('../generate_single_cell_data/alldata_pseudobulkpresence.Rds', 'alldata_pseudobulkpresence.Rds')
 gene_expression.df <- readRDS('alldata_pseudobulkpresence.Rds')
 cutoff.int <- attributes(gene_expression.df)$cutoff.int
 file.remove('alldata_pseudobulkpresence.Rds')

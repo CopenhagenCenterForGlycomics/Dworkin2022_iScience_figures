@@ -4,13 +4,14 @@ library(ggplot2)
 library(dplyr)
 library(compositions)
 library(Matrix)
+library(writexl)
 ```
 
-```{r include=FALSE, eval=file.exists('alldata_clean_human_clr_sparse.Rds')}
+```{r}
 alldata_clean_human_clr = readRDS('alldata_clean_human_clr_sparse.Rds')
 ```
 
-```{r include=FALSE}
+```{r}
 glycogenes=read.delim('glycogenes.tsv',header=F)$V1
 full_clr = cbind(subset(reshape2::melt(as.matrix(alldata_clean_human_clr[,intersect(glycogenes,colnames(alldata_clean_human_clr))])),value != 0),data='human')
 full_clr$Var2 = as.character(full_clr$Var2)
@@ -18,7 +19,7 @@ full_clr$tissue_cell = stringr::str_replace(stringr::str_replace(full_clr$Var1,'
 full_clr$cell = stringr::str_replace( full_clr$tissue_cell,'.*:','')
 ```
 
-```{r cache=F, include=FALSE}
+```{r}
 clrs_by_cell =  full_clr %>% group_by(Var2,cell,data) %>% summarise( mean_clr = mean(value) )
 clrs_by_cell_tissue = full_clr %>% group_by(Var2,tissue_cell,data) %>% summarise( mean_clr = mean(value) )
 ```
@@ -32,7 +33,7 @@ calculate_expressed_ratio = function(pseudobulks) {
 }
 ```
 
-```{r include=F,cache=F}
+```{r}
 clean_data = function(alldata) {
 cleaned = alldata[!grepl('SMALL|Unknown',rownames(alldata)),]
 attributes(cleaned)$clustersize = attributes(alldata)$clustersize
@@ -47,7 +48,7 @@ alldata_clean_human = clean_data(readRDS('alldata_human.Rds'))
 attributes(alldata)$clustersize = c(attributes(alldata_clean_human)$clustersize)
 ```
 
-```{r include=FALSE}
+```{r}
 compute_pvalue <- function(pseudobulk, threshold) {
   
   n   <- 7 # chosen based on the number of pseudobulk sizes that model is fit to
@@ -110,7 +111,7 @@ compute_threshold <- function(ncells) {
 attributes(alldata)$thresholds = sapply(attributes(alldata)$clustersize,compute_threshold)
 ```
 
-```{r include=FALSE}
+```{r}
 required_genes=c('DPAGT1','ALG2')
 passing_cells = apply(apply(alldata_clean_human[,required_genes],2,is_expressed) ,1,all)
 passing_cells = passing_cells & apply(apply(alldata_clean_human[,c('ALG13','ALG14')],2,is_expressed),1,any)
@@ -188,8 +189,14 @@ output_colours = generate_saturation(output_colours_base,(non_stable_expression_
 heatmap_data_non_stable = data.frame(hgnc=(non_stable_expression_heatmap_data %>% filter(data=='human'))$gene,base_color=output_colours_base,color=output_colours)
 ```
 
-```{r sc_heatmap}
-knoter::excel(sc_heatmap_high_clr=heatmap_data_high_clr,raw_data_high_clr=high_clr_expression_heatmap_data, sc_heatmap_non_stable=heatmap_data_non_stable,raw_data_non_stable=non_stable_expression_heatmap_data)
+```{r}
+writexl::write_xlsx(
+  x = list(
+    sc_heatmap_high_clr=heatmap_data_high_clr,
+    raw_data_high_clr=high_clr_expression_heatmap_data,
+    sc_heatmap_non_stable=heatmap_data_non_stable,
+    raw_data_non_stable=non_stable_expression_heatmap_data),
+  path = 'sc_heatmap.xlsx')
 ```
 
 ## Legend HIGH CLR

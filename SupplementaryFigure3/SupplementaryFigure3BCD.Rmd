@@ -7,19 +7,19 @@ library(ggpubr)
 ```
 
 ```{r}
-file.copy('../generate_bulk_data/seg_lookup.Rds', getwd())
+file.copy('../generate_bulk_data/seg_lookup.Rds', 'seg_lookup.Rds')
 segs = unique(names(readRDS('seg_lookup.Rds')))
 file.remove('seg_lookup.Rds')
 ```
 
 ```{r}
-file.copy('../generate_bulk_data/tissue_results_log.Rds', getwd())
+file.copy('../generate_bulk_data/tissue_results_log.Rds', 'tissue_results_log.Rds')
 tissue_results = readRDS('tissue_results_log.Rds')
 file.remove('tissue_results_log.Rds')
 ```
 
 ```{r}
-file.copy('../generate_bulk_data/tissue_results_log_tcga.Rds', getwd())
+file.copy('../generate_bulk_data/tissue_results_log_tcga.Rds', 'tissue_results_log_tcga.Rds')
 tissue_results_tcga = readRDS('tissue_results_log_tcga.Rds')
 file.remove('tissue_results_log_tcga.Rds')
 ```
@@ -33,7 +33,7 @@ tissue_results_all = subset(
 ```
 
 ```{r}
-file.copy('../generate_single_cell_data/pseudobulk_log_seg_norm.Rds', getwd())
+file.copy('../generate_single_cell_data/pseudobulk_log_seg_norm.Rds', 'pseudobulk_log_seg_norm.Rds')
 pseudobulk_rel_diff = readRDS('pseudobulk_log_seg_norm.Rds')
 file.remove('pseudobulk_log_seg_norm.Rds')
 

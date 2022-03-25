@@ -70,7 +70,7 @@ is_expressed <- function(pseudobulks) {
 ortho_trans_table=with(read.delim('mouse_orthology_human_genes.tsv'),setNames(mouse_symbol,human_symbol))
 ```
 
-```{r load_datasets_mouse, cache=F, include=FALSE, eval=!file.exists('alldata_clean_mouse_clr_sparse.Rds')}
+```{r load_datasets_mouse}
 alldata = readRDS('alldata_mouse.Rds')
 alldata_clean_mouse = alldata[!grepl('SMALL',rownames(alldata)),]
 attributes(alldata_clean_mouse)$clustersize = attributes(alldata)$clustersize
@@ -78,23 +78,23 @@ colnames(alldata_clean_mouse) = recode(colnames(alldata_clean_mouse), Tmem5='Rxy
 rm(alldata)
 ```
 
-```{r include=FALSE, eval=!file.exists('alldata_clean_mouse_clr_sparse.Rds')}
+```{r}
 alldata=list()
 attributes(alldata)$clustersize = c(attributes(alldata_clean_mouse)$clustersize) 
 ```
 
-```{r eval=!file.exists('alldata_clean_mouse_clr_sparse.Rds')}
+```{r}
 attributes(alldata)$thresholds = sapply(attributes(alldata)$clustersize,compute_threshold)
 ```
 
-```{r include=FALSE, eval=!file.exists('alldata_clean_mouse_clr_sparse.Rds')}
+```{r}
 required_genes=c('Dpagt1','Alg2')
 passing_cells = apply(apply(alldata_clean_mouse[,required_genes],2,is_expressed) ,1,all)
 passing_cells = passing_cells & apply(apply(alldata_clean_mouse[,c('Alg13','Alg14')],2,is_expressed),1,any)
 alldata_clean_mouse = alldata_clean_mouse[which(passing_cells),]
 ```
 
-```{r include=!file.exists('alldata_clean_mouse_clr_sparse.Rds'), eval=!file.exists('alldata_clean_mouse_clr_sparse.Rds')}
+```{r}
 alldata_clean_mouse_clr = Matrix(apply(alldata_clean_mouse,2,clr),sparse = T)
 saveRDS(alldata_clean_mouse_clr,'alldata_clean_mouse_clr_sparse.Rds')
 ```
@@ -104,7 +104,7 @@ rm(alldata_clean_mouse)
 rm(alldata_clean_mouse_clr)
 ```
 
-```{r load_datasets_human, cache=F, include=FALSE, eval=!file.exists('alldata_clean_human_clr_sparse.Rds')}
+```{r load_datasets_human}
 alldata = readRDS('alldata_human.Rds')
 alldata_clean_human = alldata[!grepl('SMALL',rownames(alldata)),]
 attributes(alldata_clean_human)$clustersize = attributes(alldata)$clustersize
@@ -112,23 +112,23 @@ colnames(alldata_clean_human) = recode(colnames(alldata_clean_human), TMEM5='RXY
 rm(alldata)
 ```
 
-```{r include=FALSE, eval=!file.exists('alldata_clean_mouse_clr_sparse.Rds')}
+```{r}
 alldata=list()
 attributes(alldata)$clustersize = c(attributes(alldata_clean_human)$clustersize) 
 ```
 
-```{r eval=!file.exists('alldata_clean_human_clr_sparse.Rds')}
+```{r}
 attributes(alldata)$thresholds = sapply(attributes(alldata)$clustersize,compute_threshold)
 ```
 
-```{r include=FALSE, eval=!file.exists('alldata_clean_human_clr_sparse.Rds')}
+```{r}
 required_genes=c('DPAGT1','ALG2')
 passing_cells = apply(apply(alldata_clean_human[,required_genes],2,is_expressed) ,1,all)
 passing_cells = passing_cells & apply(apply(alldata_clean_human[,c('ALG13','ALG14')],2,is_expressed),1,any)
 alldata_clean_human = alldata_clean_human[which(passing_cells),]
 ```
 
-```{r include=!file.exists('alldata_clean_human_clr_sparse.Rds'), eval=!file.exists('alldata_clean_human_clr_sparse.Rds')}
+```{r}
 alldata_clean_human_clr = Matrix(apply(alldata_clean_human,2,clr),sparse = T)
 saveRDS(alldata_clean_human_clr,'alldata_clean_human_clr_sparse.Rds')
 ```
