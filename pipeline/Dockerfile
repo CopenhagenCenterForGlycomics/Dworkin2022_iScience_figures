@@ -2,9 +2,19 @@ FROM python:3.8-slim
 
 RUN apt-get update && apt-get install --no-install-recommends -y wget r-base-core r-cran-matrix r-cran-bit64 libhdf5-dev build-essential && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir scanpy loompy
+RUN pip3 install -r requirements.txt
 
-RUN R -e "install.packages(c('hdf5r'),repos='http://cran.rstudio.com/')"
+ENV RENV_VERSION 0.15.3
+RUN R -e "install.packages('remotes', repos = c(CRAN = 'https://cloud.r-project.org'))"
+RUN R -e "remotes::install_github('rstudio/renv@${RENV_VERSION}')"
+
+COPY results /results
+
+WORKDIR /results
+
+COPY renv.lock renv.lock
+
+RUN R -e 'renv::restore()'
 
 COPY rdata_to_matrixmarket_panglaodb.sh /usr/local/bin
 
@@ -35,10 +45,6 @@ COPY generate_supplementary_figures.R /usr/local/bin
 COPY generate_supplementary_tables.R /usr/local/bin
 
 COPY perform_figure_generation_pipeline.sh /usr/local/bin
-
-COPY results /results
-
-WORKDIR /results
 
 ENTRYPOINT ["/usr/local/bin/perform_figure_generation_pipeline.sh"]
 
