@@ -1,0 +1,4 @@
+*.h5ad
+*.tar.gz
+*.RData
+*.tsv.gz
