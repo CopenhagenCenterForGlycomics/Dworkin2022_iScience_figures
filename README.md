@@ -2,7 +2,7 @@
 
 ## Building of the pipeline
 ```
-R_IMAGE="panglao_pipeline:latest"
+R_IMAGE="figure_generation_pipeline:latest"
 docker build . -t "$R_IMAGE"
 ```
 

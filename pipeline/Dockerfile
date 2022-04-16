@@ -1,20 +1,26 @@
-FROM python:3.8-slim
+FROM r-base:3.6.1
 
-RUN apt-get update && apt-get install --no-install-recommends -y wget r-base-core r-cran-matrix r-cran-bit64 libhdf5-dev build-essential && rm -rf /var/lib/apt/lists/*
+# installing python3.6
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends \
+	gcc-9-base libgcc-9-dev libc6-dev \
+	build-essential \
+	libpq-dev python3.6 python3-pip python3-setuptools python3-dev
 
-RUN pip3 install -r requirements.txt
-
-ENV RENV_VERSION 0.15.3
+# installing remotes R package
 RUN R -e "install.packages('remotes', repos = c(CRAN = 'https://cloud.r-project.org'))"
-RUN R -e "remotes::install_github('rstudio/renv@${RENV_VERSION}')"
 
+# analysis folder hierarchy
 COPY results /results
-
 WORKDIR /results
 
-COPY renv.lock renv.lock
+# installing python libraries
+COPY requirements.txt requirements.txt
+RUN pip3 install -r requirements.txt
 
-RUN R -e 'renv::restore()'
+# installing r libraries
+COPY requirements.R requirements.R
+RUN R -e "source('requirements.R')"
 
 COPY rdata_to_matrixmarket_panglaodb.sh /usr/local/bin
 

@@ -1,11 +1,11 @@
 #!/bin/bash
 
 # pre-processing human data from tabuladb
-bash /usr/local/bin/h5ad_to_matrixmarket_wrapper_tabuladb.sh "tabuladb" "hsap_accession_tabuladb" "hsap_samples_tabuladb"
+bash /usr/local/bin/h5ad_to_matrixmarket_wrapper_tabuladb.sh "tabuladb" "hsap_accession_tabuladb.txt" "hsap_samples_tabuladb"
 bash /usr/local/bin/matrixmarket_to_h5ad_wrapper_tabuladb.sh "tabuladb" "hsap_samples_tabuladb"
 
 # pre-processing mouse data from panglaodb
-bash /usr/local/bin/rdata_to_matrixmarket_wrapper_panglaodb.sh "panglaodb" "mmus_accession_panglaodb" "mmus_samples_panglaodb"
+bash /usr/local/bin/rdata_to_matrixmarket_wrapper_panglaodb.sh "panglaodb" "mmus_accession_panglaodb.txt" "mmus_samples_panglaodb"
 bash /usr/local/bin/matrixmarket_to_h5ad_wrapper_panglaodb.sh "panglaodb" "mmus_samples_panglaodb"
 
 # generating data used to construct figures and tables
