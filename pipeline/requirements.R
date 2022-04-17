@@ -1,11 +1,4 @@
 
-# bioconductor packages
-remotes::install_version("BiocManager", version = "1.30.10", repos = "http://cran.us.r-project.org")
-BiocManager::install(update = F, ask = F, version = "3.10")
-BiocManager::install("compositions")
-BiocManager::install("edgeR")
-BiocManager::install("recount")
-
 # cran packages
 remotes::install_version("colorspace", version = "1.4-1", repos = "http://cran.us.r-project.org")
 remotes::install_version("cowplot", version = "1.0.0", repos = "http://cran.us.r-project.org")
@@ -15,8 +8,9 @@ remotes::install_version("ggpubr", version = "0.2.4", repos = "http://cran.us.r-
 remotes::install_version("gridExtra", version = "2.3", repos = "http://cran.us.r-project.org")
 remotes::install_version("ggplotify", version = "0.0.5", repos = "http://cran.us.r-project.org")
 remotes::install_version("ggrepel", version = "0.8.2", repos = "http://cran.us.r-project.org")
-remotes::install_version("hdf5r", version = "1.3.0", repos = "http://cran.us.r-project.org")
 remotes::install_version("here", version = "0.1", repos = "http://cran.us.r-project.org")
+remotes::install_version("hdf5r", version = "1.3.3", repos = "http://cran.us.r-project.org")
+remotes::install_version("locfit", version = "1.5.9.1", repos = "http://cran.us.r-project.org")
 remotes::install_version("Matrix", version = "1.2-18", repos = "http://cran.us.r-project.org")
 remotes::install_version("matrixStats", version = "0.55.0", repos = "http://cran.us.r-project.org")
 remotes::install_version("plyr", version = "1.8.4", repos = "http://cran.us.r-project.org")
@@ -29,5 +23,11 @@ remotes::install_version("stringr", version = "1.4.0", repos = "http://cran.us.r
 remotes::install_version("tidyr", version = "1.0.0", repos = "http://cran.us.r-project.org")
 remotes::install_version("writexl", version = "1.2", repos = "http://cran.us.r-project.org")
 
+# bioconductor packages
+remotes::install_version("BiocManager", version = "1.30.10", repos = "http://cran.us.r-project.org")
+BiocManager::install(update = F, ask = F, version = "3.10")
+BiocManager::install("compositions", update = F, ask = F)
+BiocManager::install("edgeR", update = F, ask = F)
+BiocManager::install("recount", update = F, aske = F)
 
 

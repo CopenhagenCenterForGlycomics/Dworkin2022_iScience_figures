@@ -5,6 +5,9 @@ RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
 	gcc-9-base libgcc-9-dev libc6-dev \
 	build-essential \
+	curl \
+	libxml2-dev \
+	libhdf5-dev \
 	libpq-dev python3.6 python3-pip python3-setuptools python3-dev
 
 # installing remotes R package
@@ -22,25 +25,21 @@ RUN pip3 install -r requirements.txt
 COPY requirements.R requirements.R
 RUN R -e "source('requirements.R')"
 
+COPY preprocess_pipeline_wrapper_panglaodb.sh /usr/local/bin
+
 COPY rdata_to_matrixmarket_panglaodb.sh /usr/local/bin
-
-COPY rdata_to_matrixmarket_wrapper_panglaodb.sh /usr/local/bin
-
-COPY matrixmarket_to_h5ad_wrapper_panglaodb.sh /usr/local/bin
 
 COPY matrixmarket_to_processed_h5ad_scanpy_panglaodb.py /usr/local/bin
 
-COPY h5ad_to_matrixmarket_tabuladb.sh /usr/local/bin
+COPY preprocess_pipeline_wrapper_tabuladb.sh /usr/local/bin
 
-COPY h5ad_to_matrixmarket_wrapper_tabuladb.sh /usr/local/bin
+COPY annotate_cells_tabuladb.sh /usr/local/bin
 
-COPY matrixmarket_to_h5ad_wrapper_tabuladb.sh /usr/local/bin
-
-COPY matrixmarket_to_processed_h5ad_scanpy_tabuladb.py /usr/local/bin
+COPY h5ad_to_processed_h5ad_scanpy_tabuladb.py /usr/local/bin
 
 COPY h5ad_to_rds.R /usr/local/bin
 
-COPY perform_preprocessing_pipeline.sh /usr/local/bin
+COPY preprocess_pipeline.sh /usr/local/bin
 
 COPY generate_data.R /usr/local/bin
 

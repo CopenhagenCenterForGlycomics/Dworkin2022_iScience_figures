@@ -1,10 +1,8 @@
 #!/bin/bash
 
-database_id="$1"
+data_file="$1"
 
-data_file="$2"
-
-outputdir="${3:-output}"
+outputdir="${2:-output}"
 
 csv_to_tsv() {
 	cut -d',' -f1-4 | tr -d '"' | tr ',' $'\t'
@@ -52,15 +50,15 @@ r_command="load('${rdata_parent}/${rdata_filename}'); Matrix::writeMM(sm, '${rda
 	
 R -e "$r_command"
 	
-tar -zcvf "$output_matrixmarket" matrix.mtx genes.tsv barcodes.tsv && rm matrix.mtx genes.tsv barcodes.tsv
+tar -zcvf "$output_matrixmarket" -C "${outputdir}" matrix.mtx genes.tsv barcodes.tsv && rm "${outputdir}/matrix.mtx" "${outputdir}/genes.tsv" "${outputdir}/barcodes.tsv"
 	
 info "Created MatrixMarket targz file $output_matrixmarket"
 	
 info "Retrieving the pre-annotated clusters for $output_matrixmarket"
 
-curl -L "${panglaodb_seurat_base_url}/${sample_identifier}.seurat_clusters.txt" > "${sample_identifier}.seurat_clusters.txt"
+curl -L "${panglaodb_seurat_base_url}/${sample_identifier}.seurat_clusters.txt" > "${rdata_parent}/${sample_identifier}".seurat_clusters.txt
 
 cluster_cell_types="$PWD/input/panglaodb_ref/sample_clusters_cell_types.tsv"
-seurat_clusters="${sample_identifier}.seurat_clusters.txt"
+seurat_clusters="${rdata_parent}/${sample_identifier}.seurat_clusters.txt"
 
 join -t$'\t' -1 2 -2 2 <(grep -F "$sample_identifier" "$cluster_cell_types" | sort -t$'\t' -n -k2 ) <(cat "$seurat_clusters" | tr ' ' $'\t' | sort -t$'\t' -n -k2 ) | awk -F$'\t' '{ print $4 FS $3 FS $1}' > "${outputdir}/${sample_identifier}.cell_annotation.tsv" && rm $seurat_clusters

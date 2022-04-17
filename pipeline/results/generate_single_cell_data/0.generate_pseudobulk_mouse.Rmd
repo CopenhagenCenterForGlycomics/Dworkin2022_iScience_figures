@@ -1,8 +1,8 @@
 
 ```{r}
 if(!file.exists("alldata_mouse.Rds")){
-  rds = list.files(path='rds_mouse/', pattern='.Rds')
-  raw_alldata = sapply(paste('rds_mouse/',rds,sep=''),readRDS)
+  rds = list.files(path='mmus_panglaodb_pseudobulk/', pattern='.Rds.gz')
+  raw_alldata = sapply(paste('mmus_panglaodb_pseudobulk/',rds,sep=''), function(x) { readRDS(gzfile(x)) })
 }
 ```
 

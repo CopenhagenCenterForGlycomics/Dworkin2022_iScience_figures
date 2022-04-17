@@ -36,7 +36,7 @@ elif [ "$database" == "tabuladb" ]; then
 
 	outfile_pseudobulk_rds="${outfile_pseudobulk/.h5ad/.Rds}"
 
-	python3 /usr/local/bin/matrixmarket_to_processed_h5ad_scanpy_tabula_sapiens.py "$database" "$inputfile" "$outfile" "$annotations" "$tissue"
+	python3 /usr/local/bin/h5ad_to_processed_h5ad_scanpy_tabuladb.py "$database" "$inputfile" "$outfile" "$annotations" "$tissue"
 
 fi
 
