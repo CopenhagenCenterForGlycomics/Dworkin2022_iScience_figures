@@ -1,13 +1,13 @@
 #!/bin/bash
 
 database_id="$1"
-accession_file="$PWD"/input/"$2"
-samples_folder="$PWD"/input/"$3"
+accession_file="$PWD"/input/"$database_id"/"$2"
+samples_folder="$PWD"/preprocess/"$3"
 
 mkdir -p "$samples_folder"
 
 ## storing paths to RData objects for each sample in array (ignoring all but human chromium10x)
-RData_array=( $(tar -tf "$PWD"/input/panglaodb_bulk_j2I2pC.tar | grep -f "$accession_file" | grep -v 'RPKM') )
+RData_array=( $(tar -tf "$PWD"/input/"$database_id"/panglaodb_bulk.tar | grep -f "$accession_file" | grep -v 'RPKM') )
 RData_array=("${RData_array[0]}")
 
 for RData in "${RData_array[@]}"; do
@@ -18,14 +18,14 @@ for RData in "${RData_array[@]}"; do
 	sra_srs_folder="${sra_srs_file%%.*}"
 	echo "sra_sra folder is $sra_srs_folder"
 
-	tissue=$(grep "$sra_srs_folder" "$PWD"/input/panglaodb_ref/sample_source_meta.tsv | cut -f2 | sed 's/[^A-Za-z0-9.-]/_/g')
+	tissue=$(grep "$sra_srs_folder" "$PWD"/input/"$database_id"/panglaodb_ref/sample_source_meta.tsv | cut -f2 | sed 's/[^A-Za-z0-9.-]/_/g')
 	echo "tissue is $tissue"
 
 	mkdir -p "$samples_folder"/"$sra_srs_folder"
 
 	## extracting RData object from 31 GB tar
 	echo "extracting RData"
-	tar -xOf "$PWD"/input/panglaodb_bulk_j2I2pC.tar $RData > "$samples_folder"/"$sra_srs_folder"/"$sra_srs_file"
+	tar -xOf "$PWD"/input/"$database_id"/panglaodb_bulk.tar $RData > "$samples_folder"/"$sra_srs_folder"/"$sra_srs_file"
 
 	## building MatrixMarket from RData object
 	# echo "constructing MatrixMarket"

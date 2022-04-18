@@ -227,27 +227,31 @@ if custom_clustering_file != None:
   
   sc.pp.normalize_total(filtered, target_sum=1e4)
   sc.pp.log1p(filtered)
+  
   # getting the tsne clusters (in this case duplicate cell type annotations) and ordering by first occurrence
   indexes = np.unique(cluster_info['cell_type'], return_index=True)[1]
-  cluster_numbers = np.array([cluster_info['cell_type'][index] for index in sorted(indexes)])
+
   # concatenating tissue annotation, cell type and tsne cluster for each barcode and ordering unique entries by first occurrence
+  cluster_numbers = np.array([cluster_info['cell_type'][index] for index in sorted(indexes)])
   cluster_ids = [ tissue_annotation+"_"+("_cluster_".join(x)) for x in list(zip(cluster_info['cell_type'].to_numpy(),cluster_info['cell_type'].to_numpy().astype('str')))]
   indexes = np.unique(cluster_ids, return_index=True)[1]
   cluster_ids = [cluster_ids[index] for index in sorted(indexes)]
+  
   # ensuring cell type annotations match cluster ids
   unique_celltypes = np.array([ cluster_info['cell_type'][index] for index in sorted(indexes) ]).astype('str')
   cluster_sizes = np.array([ np.count_nonzero(filtered.obs.cluster_number.isin([clust])) for clust in cluster_numbers])
-  
   hgnc_only = np.array([ geneid.split('_EN')[0] for geneid in matrixdata.var_names ]).astype('str')
   
   # filtering 10-90 percentile outliers on each gene before computing pseudobulk average
   cluster_pseudobulks, cluster_specific_num_nonzero_valued_genes = trimmed_means(filtered, cluster_numbers)
   pseudobulks = pd.DataFrame(cluster_pseudobulks).T
   pseudopresence = pd.DataFrame(cluster_specific_num_nonzero_valued_genes).T
+  
   # preparing pseudobulk anndata object
   obsdata = pd.DataFrame(matrixdata.var_names)
   obsdata.columns = ['gene']
   pseudobulk_anndata = anndata.AnnData(X=pseudobulks, obs=obsdata)
+  
   # writing pseudobulk anndata to h5ad 
   pseudobulk_anndata.uns['tissue'] = tissue_annotation
   pseudobulk_anndata.obsm['hgnc'] = hgnc_only
@@ -256,11 +260,13 @@ if custom_clustering_file != None:
   pseudobulk_anndata.varm['cluster_number'] = cluster_numbers
   pseudobulk_anndata.varm['cluster_size'] = cluster_sizes
   pseudobulk_anndata.write(pseudobulk_filename)
+  
   # writing pseudobulk pandas to csv
   pseudobulks.columns = cluster_ids
   pseudobulks.insert(0, "hgnc", hgnc_only, True)
   pseudobulks.insert(0, "gene", matrixdata.var_names, True)
   pseudobulks.to_csv(pseudobulk_filename.replace('.h5ad','.tsv'), sep='\t', quoting=csv.QUOTE_NONE, na_rep='NaN', index=False)
+  
   # writing pseudopresence pandas to csv
   pseudopresence.columns = cluster_ids
   pseudopresence.insert(0, "hgnc", hgnc_only, True)

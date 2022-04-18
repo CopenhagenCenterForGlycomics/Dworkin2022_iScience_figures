@@ -14,8 +14,7 @@ RUN apt-get update \
 RUN R -e "install.packages('remotes', repos = c(CRAN = 'https://cloud.r-project.org'))"
 
 # analysis folder hierarchy
-COPY results /results
-WORKDIR /results
+WORKDIR /home
 
 # installing python libraries
 COPY requirements.txt requirements.txt
@@ -24,6 +23,20 @@ RUN pip3 install -r requirements.txt
 # installing r libraries
 COPY requirements.R requirements.R
 RUN R -e "source('requirements.R')"
+
+COPY download_scp.sh /usr/local/bin
+
+COPY download_gtex.sh /usr/local/bin
+
+COPY download_tcga.sh /usr/local/bin
+
+COPY download_panglaodb.sh /usr/local/bin
+
+COPY download_tabuladb.sh /usr/local/bin
+
+COPY preprocess_pipeline_wrapper_scp.sh /usr/local/bin
+
+COPY scanpy_normalization.py /usr/local/bin
 
 COPY preprocess_pipeline_wrapper_panglaodb.sh /usr/local/bin
 
@@ -41,15 +54,15 @@ COPY h5ad_to_rds.R /usr/local/bin
 
 COPY preprocess_pipeline.sh /usr/local/bin
 
-COPY generate_data.R /usr/local/bin
+COPY reshape_data.sh /usr/local/bin
 
-COPY generate_main_figures.R /usr/local/bin
+COPY generate_main_figures.sh /usr/local/bin
 
-COPY generate_supplementary_figures.R /usr/local/bin
+COPY generate_supplementary_figures.sh /usr/local/bin
 
-COPY generate_supplementary_tables.R /usr/local/bin
+COPY generate_supplementary_tables.sh /usr/local/bin
 
-COPY perform_figure_generation_pipeline.sh /usr/local/bin
+COPY main.sh /usr/local/bin
 
-ENTRYPOINT ["/usr/local/bin/perform_figure_generation_pipeline.sh"]
+ENTRYPOINT ["/usr/local/bin/main.sh"]
 

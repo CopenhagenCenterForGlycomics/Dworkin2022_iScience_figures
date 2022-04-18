@@ -1,0 +1,597 @@
+```{r}
+library(Matrix)
+library(pbmcapply)
+```
+
+# constructing environment from scp input files
+
+```{r}
+
+load.environment <- local(expr = {
+
+  # storing gene annotation variables ----
+  annotation.environment <- local(expr = {
+  
+    ##############################
+    # loading glycosyltransferases 
+    file.copy('../../input/scp/transtable2.tsv', 'transtable2.tsv')
+    glycosyltransferase.df = unique(setNames(read.csv('transtable2.tsv', sep = '\t', header = T)[,c('Entrez','HGNC')], c('entrezgene_id','transtable2_symbol')))
+    file.remove('transtable2.tsv')
+  
+    ######################################
+    # loading relevent biomaRt identifiers
+    file.copy('../../input/scp/hg19v2.1.0cellRanger_gt_annotation.tsv')
+    gt_biomaRt.df = read.delim('hg19v2.1.0cellRanger_gt_annotation.tsv')
+    file.remove('hg19v2.1.0cellRanger_gt_annotation.tsv')
+    
+    result.list <- list(
+      glycosyltransferase.df  = glycosyltransferase.df,
+      gt_biomaRt.df           = gt_biomaRt.df)
+      
+  }, envir = new.env())
+  
+  # storing single cell variables ----
+  single_cell.environment <- local(expr = {
+    
+    #####################
+    # loading single cell
+    path.vec <- 'input_data/HEK293_sc/'
+    
+    file.copy('../../input/scp/genes.txt.gz', 'genes.txt.gz')
+    gene_rows.df <- setNames(read.csv(file = gzfile('genes.txt.gz'), sep = '\t', header = F), c('ensembl_gene_id', 'ref_genome|gene_symbol'))
+    gene_rows.df$`ref_genome|gene_symbol` <- make.unique(gene_rows.df$`ref_genome|gene_symbol`, sep = '___')
+    file.remove('genes.txt.gz')
+    
+    # umis ----
+    file.copy('../../input/scp/cellnames.umis.txt','cellnames.umis.txt')
+    cell_cols.df <- setNames(read.csv(file = gzfile('cellnames.umis.txt'), sep = '\t', header = F), c('exp|method|cell|'))
+    file.remove('cellnames.umis.txt')
+    
+    file.copy('../../input/scp/umis.counts.txt.gz','umis.counts.txt.gz')
+    umis.dgTMatrix <- Matrix::readMM('umis.counts.txt.gz')
+    umis.dgTMatrix@Dimnames <- list(gene_rows.df$`ref_genome|gene_symbol`, cell_cols.df$`exp|method|cell|`)
+    file.remove('umis.counts.txt.gz')
+    
+    umis.list <- list(
+      gene_rows.df    = gene_rows.df,
+      cell_cols.df    = cell_cols.df,
+      reads.dgTMatrix = umis.dgTMatrix)
+    
+    result.list <- list(umis = umis.list)
+    
+  }, envir = new.env())
+  
+  # storing bulk variables ----
+  bulk.environment <- local(expr = {
+    
+    ###################
+    # loading bulk cell
+    path.vec <- 'input_data/HEK293_bulk/'
+    
+    files <- list.files(path.vec, full.names = T)
+    
+    file.copy('../../input/scp/human_mixture1_genes_results.txt.gz', 'human_mixture1_genes_results.txt.gz')
+    mixture1.bulk <- read.csv(file = gzfile('human_mixture1_genes_results.txt.gz'), sep = '\t', header = T)
+    names(mixture1.bulk)[c(1,2)] <- c('ensembl_gene_id', 'ensembl_transcript_id')
+    file.remove('human_mixture1_genes_results.txt.gz')
+    
+    file.copy('../../input/scp/human_mixture2_genes_results.txt.gz', 'human_mixture2_genes_results.txt.gz')
+    mixture2.bulk <- read.csv(file = gzfile('human_mixture2_genes_results.txt.gz'), sep = '\t', header = T)
+    names(mixture2.bulk)[c(1,2)] <- c('ensembl_gene_id', 'ensembl_transcript_id')
+    file.remove('human_mixture2_genes_results.txt.gz')
+
+    result.list <- list(
+      mixture1.bulk = mixture1.bulk,
+      mixture2.bulk = mixture2.bulk)
+    
+  }, envir = new.env())
+  
+  result.list <- list(
+    annotation.environment  = annotation.environment,
+    single_cell.environment = single_cell.environment,
+    bulk.environment        = bulk.environment)
+
+}, envir = new.env())
+
+saveRDS(load.environment, 'load_env.Rds')
+rm(load.environment)
+
+```
+
+```{r}
+list2env(as.list(readRDS('load_env.Rds')), envir = environment())
+```
+
+# setting options
+
+```{r}
+set.seed(42)
+options(stringsAsFactors = F)
+```
+
+# subsetting count matrix
+
+```{r}
+# separating replicates from mixture ----
+subset_dgTMatrix <- function(regexp, technique.char, cell_cols.df, gene_rows.df, reads.dgTMatrix){
+  
+  technique_indices.vec <- grep(technique.char, cell_cols.df$`exp|method|cell|`)
+  mixture_indices.vec   <- grep(regexp, cell_cols.df$`exp|method|cell|`)
+  indices.vec           <- intersect(mixture_indices.vec, technique_indices.vec)
+  hsap_indices.vec      <- grep('hg19', gene_rows.df$`ref_genome|gene_symbol`)
+  
+  rownames(reads.dgTMatrix) <- gsub('-', '..', rownames(reads.dgTMatrix), fixed = T)
+  
+  rows.vec  <- rownames(reads.dgTMatrix)[hsap_indices.vec]
+  cols.vec  <- colnames(reads.dgTMatrix)[indices.vec] 
+  result.dgTMatrix  <- reads.dgTMatrix[rows.vec, cols.vec]
+  result.dgCMatrix  <- as(result.dgTMatrix, 'dgCMatrix')
+  
+  rownames(result.dgCMatrix) <- gsub('..', '-', rownames(result.dgCMatrix), fixed = T)
+  rownames(result.dgCMatrix) <- gsub('^hg19_', '', rownames(result.dgCMatrix))
+
+  return(result.dgCMatrix)
+  
+}
+```
+
+```{r}
+subset_dgTMatrix_wrapper <- function(technique.char, ...) {
+  
+  list2env(..., envir = environment())
+  
+  print('getting hsap indices')
+  hsap_indices.vec <- grep('hg19', gene_rows.df$`ref_genome|gene_symbol`)
+  
+  print('subsetting mixture1')
+  sc_mixture1.hg19.df <- subset_dgTMatrix('mixed1', technique.char, cell_cols.df, gene_rows.df, reads.dgTMatrix) 
+  
+  print('subsetting mixture2')
+  sc_mixture2.hg19.df <- subset_dgTMatrix('mixed2', technique.char, cell_cols.df, gene_rows.df, reads.dgTMatrix)
+  
+  gene_rows.df <- gene_rows.df[hsap_indices.vec,]
+  gene_rows.df <- within(gene_rows.df, {
+    `ref_genome|gene_symbol` = gsub('hg19_','', `ref_genome|gene_symbol`)
+    ensembl_gene_id = gsub('hg19_','', ensembl_gene_id) })
+  
+  result.list <- list(
+    sc_mixture1.hg19.df = sc_mixture1.hg19.df,
+    sc_mixture2.hg19.df = sc_mixture2.hg19.df,
+    gene_rows.df = gene_rows.df)
+  
+  return(result.list)
+  
+}
+```
+
+```{r}
+writeLines('subsetting sc read matrix...')
+sc_replicates.list <- subset_dgTMatrix_wrapper('10xChromium', single_cell.environment$umis) 
+remove(single_cell.environment) 
+```
+
+# normalising count matrix with scanpy
+
+```{r}
+dump_raw_counts <- function(count.df, ...) {
+  
+  list2env(..., envir = environment())
+  
+  rownames(count.df) <- gsub('-', '..', rownames(count.df), fixed = T)
+  count.df <- t(count.df)
+  
+  print('filtering read matrix based on visualization of quality n_count and n_gene qc metrics')
+  count.df <- count.df[intersect(
+    which(Matrix::rowSums(count.df) > 1000),
+    which(Matrix::rowSums(count.df > 0) > n_gene_filter.int)),]
+  
+  print('writing filtered cell x gene raw read matrix to file')
+  write.table(
+    x = data.frame('cell_id' = rownames(count.df), as.matrix(count.df)),
+    file = filenames.char,
+    col.names = T,
+    row.names = F,
+    quote = F,
+    sep = '\t',
+    append = F)
+  
+  return(NULL)
+  
+}
+```
+
+```{r}
+read_normalized_counts <- function(path.char) {
+  
+  result.df <- read.delim(file = file.path(path.char, 'X.csv'), header = F, sep = '\t')
+  colnames(result.df) <- read.delim(file = file.path(path.char, 'var.csv'), header = T, sep = '\t')$X
+  rownames(result.df) <- read.delim(file = file.path(path.char, 'obs.csv'), header = T, sep = '\t')$X
+  result.df <- Matrix(as.matrix(result.df), sparse = T)
+  result.df <- t(result.df)
+  rownames(result.df) <- gsub('..', '-', rownames(result.df), fixed = T)
+  
+  return(result.df)
+  
+}
+```
+
+```{r}
+count_normalization_wrapper <- function(...) {
+  
+  list2env(..., envir = environment())
+  
+  dump_raw_counts(
+    sc_mixture1.hg19.df, list(
+    filenames.char = 'chromium10x_replicate1_raw_umis.tsv',
+    n_gene_filter.int = 500))
+  
+  dump_raw_counts(
+      sc_mixture2.hg19.df, list(
+      filenames.vec = 'chromium10x_replicate2_raw_umis.tsv', 
+      n_gene_filter.int = 500))
+  
+  print('running normalization on filtered read matrix')
+  reticulate::py_run_file('/usr/local/bin/scanpy_normalization.py', local = F, convert = F)
+  
+  result.list <- list(
+    sc_mixture1.hg19.df = read_normalized_counts('chromium10x_replicate1_normalized_umis'),
+    sc_mixture2.hg19.df = read_normalized_counts('chromium10x_replicate2_normalized_umis'),
+    gene_rows.df = gene_rows.df)
+  
+  return(result.list)
+  
+}
+```
+
+```{r}
+writeLines('normalizing sc read matrix...')
+sc_replicates.list <- count_normalization_wrapper(c(log1p_transform = F, sc_replicates.list))
+```
+
+# filtering count matrix based on iqr90
+
+```{r}
+# outliers detection and removal ----
+filter_counts <- function(x, ...) UseMethod("filter_counts")
+
+filter_counts.nziqr <- function(placeholder.char, ...) {
+  
+  list2env(list(...), envir = environment())
+  
+  count.df <- t(count.df)
+  col_indices <- 1:ncol(count.df)
+  row_indices <- 1:nrow(count.df)
+  
+  batches.list <- split(col_indices, ceiling(seq_along(col_indices)/1000))
+  
+  pbmcapply_function <- function(i, c.df, r.vec) {
+    
+    value.vec <- c.df[r.vec, i]
+    quant.vec <- value.vec[which(value.vec > 0)]
+    cutof.vec <- quantile(quant.vec, na.rm = T, probs = p.int)
+    cutof.max <- which(value.vec > 0 & (value.vec < cutof.vec[1] | value.vec > cutof.vec[2]))
+    value.vec[cutof.max] <- NA
+    value.vec <- Matrix::sparseVector(
+      value.vec, seq(value.vec), length(value.vec))
+    return(value.vec) 
+    
+  }
+  
+  do.call(
+    Matrix::cBind,
+    lapply(batches.list, function(batch) {
+      do.call(
+        Matrix::cBind,
+        lapply(
+          pbmcapply::pbmclapply(
+            X = batch, 
+            FUN = pbmcapply_function,
+            count.df,
+            row_indices,
+            ignore.interactive = T),
+          as, "sparseMatrix")) })) -> result.df
+  
+  rownames(result.df) <- rownames(count.df)
+  colnames(result.df) <- colnames(count.df)
+  result.df <- t(result.df)
+  
+  return(result.df)
+  
+}
+```
+
+```{r}
+filter_counts_wrapper <- function(...) {
+  
+  list2env(..., envir = environment())
+  
+  result.list <- list(
+    
+    sc_mixture1.hg19.df = filter_counts(
+      structure('placeholder', 
+      class = c('character', s3method.char)), 
+      count.df = sc_mixture1.hg19.df, 
+      p.int = percentile.int),
+    
+    sc_mixture2.hg19.df = filter_counts(
+      structure('placeholder', 
+      class = c('character', s3method.char)), 
+      count.df = sc_mixture2.hg19.df, 
+      p.int = percentile.int),
+    gene_rows.df = gene_rows.df)
+  
+  return(result.list)
+  
+}
+```
+
+```{r}
+writeLines('filtering sc read matrix...')
+sc_replicates.list <- filter_counts_wrapper(c(
+  sc_replicates.list, 
+  percentile.int = c(0.05, 0.95), 
+  s3method.char = 'nziqr'))
+```
+
+# annotating count matrix
+
+```{r}
+annotation <- function(x, ...) UseMethod("annotation")
+
+annotation.gt <- function(gt.df, mixture.df, mismatch.df = NA) {
+  
+  # replacing wrong gt hgnc labels ----
+  if(is.data.frame(mismatch.df)) {
+    
+    hgnc_symbols <- mismatch.df$hgnc_symbol
+    erro_symbols <- mismatch.df$`ref_genome|gene_symbol`
+    erro_symbol.indices <- which(rownames(mixture.df) %in% erro_symbols)
+    corr_symbols.vec <- hgnc_symbols[match(rownames(mixture.df)[erro_symbol.indices], erro_symbols)]
+    rownames(mixture.df)[erro_symbol.indices] <- corr_symbols.vec
+    attributes(mixture.df)$mismatch.df <- mismatch.df }
+  
+  shared_symbols.vec <-
+    intersect(
+      gt.df$`ref_genome|gene_symbol`, 
+      rownames(mixture.df))
+  
+  mixture.df <- mixture.df[shared_symbols.vec,]
+
+  return(mixture.df)
+  
+}
+```
+
+```{r}
+# annotating ----
+annotate_wrapper <- function(...) {
+  
+  list2env(..., envir = environment())
+  
+  names(gt_biomaRt.df)[1] <- 'hgnc_symbol'
+  names(gt_biomaRt.df)[2] <- 'entrezgene_id'
+  
+  gt_genes.df  <- unique(merge(glycosyltransferase.df, gt_biomaRt.df))
+  gt_genes.df  <- unique(merge(gt_genes.df, gene_rows.df, all.y = T))
+
+  erroneous_symbols.indices <- unique(c(
+    which(gt_genes.df$transtable2_symbol != gt_genes.df$hgnc_symbol),
+    which(gt_genes.df$hgnc_symbol != gt_genes.df$`ref_genome|gene_symbol`),
+    which(gt_genes.df$`ref_genome|gene_symbol` != gt_genes.df$transtable2_symbol)))
+  
+  if(length(erroneous_symbols.indices) == 0) { NULL } else {
+    
+    symbol_mismatch.df    <- gt_genes.df[erroneous_symbols.indices,]
+    correct_symbols.vec   <- gt_genes.df$hgnc_symbol[erroneous_symbols.indices]
+    gt_genes.df$`ref_genome|gene_symbol`[
+      erroneous_symbols.indices] <- 
+      correct_symbols.vec }
+  
+  class(gt_genes.df)  <- c('data.frame','gt')
+
+  result.list <- list(
+    gene_rows.df       = gt_genes.df,
+    sc_mixture1.hg19.df    = annotation(gt_genes.df, sc_mixture1.hg19.df, symbol_mismatch.df),
+    sc_mixture2.hg19.df    = annotation(gt_genes.df, sc_mixture2.hg19.df, symbol_mismatch.df))
+  
+  return(result.list)
+  
+}
+```
+
+```{r}
+writeLines('annotating sc read matrix...')
+annotated_replicates.list <- annotate_wrapper(c(annotation.environment, sc_replicates.list))
+```
+
+# subsampling count matrix
+
+```{r}
+# subsampling cells from replicates ----
+cell_sampling.split <- function(mixture.df, name.var) {
+  
+  split1 <- sample(1:ncol(mixture.df),size = (ncol(mixture.df) - 5)/2, replace = F)
+  split2 <- c(1:ncol(mixture.df))[-split1]
+  
+  mixture1.df <- mixture.df[,split1]
+  mixture2.df <- mixture.df[,split2]
+  
+  result.list <- setNames(list(mixture1.df, mixture2.df), name.var)
+  
+  return(result.list)
+  
+}
+```
+
+```{r}
+cell_sampling.samplesize <- function(mixture.df, num.int, name.var) {
+  
+  splitn <- sample(1:ncol(mixture.df), size = num.int, replace = F)
+  
+  mixture.df <- mixture.df[,splitn]
+  
+  result.list <- setNames(list(mixture.df), name.var)
+  
+  return(result.list)
+  
+}
+```
+
+```{r}
+cell_sampling_wrapper <- function(num.int, ...) {
+  
+  list2env(..., envir = environment())
+  
+  mixture1.split.hg19.list <- cell_sampling.split(sc_mixture1.hg19.df, name.var = c('mixture1.split1.hg19.df', 'mixture1.split2.hg19.df'))
+  mixture2.split.hg19.list <- cell_sampling.split(sc_mixture2.hg19.df, name.var = c('mixture2.split1.hg19.df', 'mixture2.split2.hg19.df'))
+  
+  mixture1.split20.hg19.list <- cell_sampling.samplesize(sc_mixture1.hg19.df, name.var = c('mixture1.split20.hg19.df'), num.int = num.int)
+  mixture2.split20.hg19.list <- cell_sampling.samplesize(sc_mixture2.hg19.df, name.var = c('mixture2.split20.hg19.df'), num.int = num.int)
+  
+  result.list <- list(
+    sc_mixture1.split1.hg19.df  = mixture1.split.hg19.list$mixture1.split1.hg19.df,
+    sc_mixture1.split2.hg19.df  = mixture1.split.hg19.list$mixture1.split2.hg19.df,
+    sc_mixture2.split1.hg19.df  = mixture2.split.hg19.list$mixture2.split1.hg19.df,
+    sc_mixture2.split2.hg19.df  = mixture2.split.hg19.list$mixture2.split2.hg19.df,
+    sc_mixture1.split20.hg19.df = mixture1.split20.hg19.list$mixture1.split20.hg19.df,
+    sc_mixture2.split20.hg19.df = mixture2.split20.hg19.list$mixture2.split20.hg19.df)
+  
+  return(result.list)
+  
+}
+```
+
+```{r}
+writeLines('sampling sc read matrix...')
+sampled_replicates.list <- cell_sampling_wrapper(200, annotated_replicates.list)
+```
+
+# pseudobulking count matrix
+
+```{r}
+# pseudobulking ----
+pseudobulk <- function(mixture.df) {
+  
+  bool.df <- !!mixture.df
+  
+  pseudobulk.df <- data.frame(
+    `ref_genome|gene_symbol` = rownames(mixture.df),
+    sum_raw  = Matrix::rowSums(mixture.df, na.rm = T),
+    avg_raw  = Matrix::rowMeans(mixture.df, na.rm = T),
+    avg_nonzero = Matrix::rowMeans(mixture.df, na.rm = T)/Matrix::rowSums(bool.df, na.rm = T),
+    num_cells_value = Matrix::rowSums(bool.df, na.rm = T),
+    num_cells_zero = Matrix::rowSums(!bool.df, na.rm = T),
+    check.names = F)
+  
+  pseudobulk.df$num_cells_na <- 
+    ncol(mixture.df) - (
+    pseudobulk.df$num_cells_value + 
+    pseudobulk.df$num_cells_zero)
+  
+  return(pseudobulk.df)
+  
+}
+```
+
+```{r}
+pseudobulking_wrapper <- function(...) {
+  
+  list2env(..., envir = environment())
+  
+  result.list <- list(
+    sc_mixture1.hg19.pseudobulk         = pseudobulk(sc_mixture1.hg19.df),
+    sc_mixture1.hg19.split1.pseudobulk  = pseudobulk(sc_mixture1.split1.hg19.df),
+    sc_mixture1.hg19.split2.pseudobulk  = pseudobulk(sc_mixture1.split2.hg19.df),
+    sc_mixture1.hg19.split20.pseudobulk = pseudobulk(sc_mixture1.split20.hg19.df),
+    sc_mixture2.hg19.pseudobulk         = pseudobulk(sc_mixture2.hg19.df),
+    sc_mixture2.hg19.split1.pseudobulk  = pseudobulk(sc_mixture2.split1.hg19.df),
+    sc_mixture2.hg19.split2.pseudobulk  = pseudobulk(sc_mixture2.split2.hg19.df),
+    sc_mixture2.hg19.split20.pseudobulk = pseudobulk(sc_mixture2.split20.hg19.df))
+  
+  return(result.list)
+  
+}
+```
+
+```{r}
+writeLines('pseudobulking sc read matrix...')
+pseudobulked_replicates.list <- pseudobulking_wrapper(c(sampled_replicates.list, annotated_replicates.list))
+```
+
+# merging bulk and single cell samples
+
+```{r}
+# merging bulk and single cell datasets ----
+bulk_sc_combine <- function(bulk.df, pseudobulk.df, gene_rows.df) {
+  
+  print('merging single and bulk df on ensembl gene id')
+  pseudobulk.df <- merge(pseudobulk.df, gene_rows.df)
+  names(pseudobulk.df)[which(
+    names(pseudobulk.df) %in%
+    'ref_genome|gene_symbol')] <- 'hsap_gene'
+  
+  result.df       <- merge(bulk.df, pseudobulk.df, all = T)
+  result.df$color <- ifelse(is.na(result.df$entrezgene_id), 'grey', 'red')
+  result.df$alpha <- ifelse(is.na(result.df$entrezgene_id), 0.25, 1)
+  
+  m_to_o.genes <- grep('___', result.df$hsap_gene, fixed = T, value = T)
+  m_to_o.genes <- unique(c(m_to_o.genes, gsub('___.*$', '', m_to_o.genes)))
+  m_to_o.genes <- paste0('^', m_to_o.genes, '$')
+  
+  m_to_o.df <- result.df[unlist(lapply(m_to_o.genes, grep, result.df$hsap_gene)),]
+  m_to_o.df <- m_to_o.df[, c(1:9, 13:14)]
+  
+  result.df <- result.df[-which(result.df$ensembl_gene_id %in% m_to_o.df$ensembl_gene_id),]
+  result.df <- result.df[order(result.df$alpha),]
+  result.df <- result.df[, c(1:9, 13:14)]
+  
+  attributes(result.df)$many_to_one.df <- m_to_o.df  
+  
+  return(result.df)
+  
+}
+```
+
+```{r}
+bulk_sc_combine_wrapper <- function(...) {
+  
+  list2env(..., envir = environment())
+  
+  result.list <- list(
+    mixture1.bulk_pseuodbulk         = bulk_sc_combine(mixture1.bulk[,c('ensembl_gene_id','TPM')], sc_mixture1.hg19.pseudobulk,         gene_rows.df),
+    mixture2.bulk_pseuodbulk         = bulk_sc_combine(mixture2.bulk[,c('ensembl_gene_id','TPM')], sc_mixture2.hg19.pseudobulk,         gene_rows.df),
+    mixture1.split1.bulk_pseuodbulk  = bulk_sc_combine(mixture1.bulk[,c('ensembl_gene_id','TPM')], sc_mixture1.hg19.split1.pseudobulk,  gene_rows.df),
+    mixture1.split2.bulk_pseuodbulk  = bulk_sc_combine(mixture1.bulk[,c('ensembl_gene_id','TPM')], sc_mixture1.hg19.split2.pseudobulk,  gene_rows.df),
+    mixture2.split1.bulk_pseuodbulk  = bulk_sc_combine(mixture2.bulk[,c('ensembl_gene_id','TPM')], sc_mixture2.hg19.split1.pseudobulk,  gene_rows.df),
+    mixture2.split2.bulk_pseuodbulk  = bulk_sc_combine(mixture2.bulk[,c('ensembl_gene_id','TPM')], sc_mixture2.hg19.split2.pseudobulk,  gene_rows.df),
+    mixture1.split20.bulk_pseuodbulk = bulk_sc_combine(mixture1.bulk[,c('ensembl_gene_id','TPM')], sc_mixture1.hg19.split20.pseudobulk, gene_rows.df),
+    mixture2.split20.bulk_pseuodbulk = bulk_sc_combine(mixture2.bulk[,c('ensembl_gene_id','TPM')], sc_mixture2.hg19.split20.pseudobulk, gene_rows.df))
+  
+  return(result.list)
+  
+}
+```
+
+```{r}
+writeLines('merging bulk and pseudobulk matrix...')
+merged_replicates.list <- bulk_sc_combine_wrapper(c(
+  bulk.environment, 
+  pseudobulked_replicates.list, 
+  annotated_replicates.list[c(-2,-3)]))
+```
+
+# writing results to file
+
+```{r}
+result.list <- list(
+  sc_replicates.list = sc_replicates.list,
+  annotated_replicates.list = annotated_replicates.list,
+  sampled_replicates.list = sampled_replicates.list,
+  pseudobulked_replicates.list = pseudobulked_replicates.list,
+  merged_replicates.list = merged_replicates.list,
+  glycosyltransferase.df = annotation.environment$glycosyltransferase.df)
+```
+
+```{r}
+saveRDS(result.list, 'chromium10x_constructor_norm_nziqr_env.Rds')
+```

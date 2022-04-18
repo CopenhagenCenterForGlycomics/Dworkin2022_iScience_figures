@@ -1,0 +1,254 @@
+
+```{r include=FALSE}
+library(edgeR)
+library(compositions)
+library(recount)
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+library(cowplot)
+library(readxl)
+library(colorspace)
+```
+
+```{r}
+glycogene_lookup=readRDS('glycogene_lookup.Rds')
+```
+
+```{r}
+seg_lookup = readRDS('seg_lookup.Rds')
+```
+
+```{r}
+# 7e8fb4c9b050a8d9e100d038629a0467a3a9c805
+readTissueData_DPAGT1 = function(rse_gene,tissue,samples) {
+
+  mtx = assay(rse_gene)[,samples]
+
+  y = DGEList(counts=mtx,group=rep('X',ncol(mtx)))
+  y = calcNormFactors(y)
+  
+  count_clr = apply(cpm(y),2,compositions::clr)
+  rownames(count_clr) = stringr::str_replace(rownames(count_clr),'\\..*$','')
+  glycogenes = count_clr[intersect(rownames(count_clr),glycogene_lookup),]
+  reverse_glycogenes = setNames(names(glycogene_lookup),glycogene_lookup)
+  rownames(glycogenes) = reverse_glycogenes[rownames(glycogenes)]
+  genenames = rownames(glycogenes)
+
+  dpagt_ref=glycogenes['DPAGT1',]
+
+  stats = as.data.frame(t(apply(glycogenes, 1, function(row) {
+    c(mean=mean(row),
+      rel_mean=mean(row/dpagt_ref),
+      rel_diff=mean(row-dpagt_ref),
+      stdev=sd(row),
+      iqr=iqr(row),
+      samples=length(row))
+  })))
+  cbind(stats,tissue=tissue,gene=genenames)
+
+}
+```
+
+```{r}
+# 4a3fee9b7b7d552846666cfbe113d124be7d6c5b
+readTissueData_perHouseKeepingGene = function(rse_gene,tissue,samples) {
+
+    mtx = assay(rse_gene)[,samples]
+
+  # We want to normalise the count data per tissue set
+  y = DGEList(counts=mtx,group=rep('X',ncol(mtx)))
+  y = calcNormFactors(y)
+  # Apply the clr to smooth out the data a bit
+  count_clr = apply(cpm(y),2,compositions::clr)
+  rownames(count_clr) = stringr::str_replace(rownames(count_clr),'\\..*$','')
+  
+  gene_lookup = c(glycogene_lookup, seg_lookup)
+  genes = count_clr[intersect(rownames(count_clr), gene_lookup),]
+  reverse_genes = setNames(names(gene_lookup), gene_lookup)
+  rownames(genes) = reverse_genes[rownames(genes)]
+  # We want to collect the mean clr, sd of the clr, IQR of the clr
+  # This will give us the sets of fold-changes for genes that we expect to 
+  # see within normal tissue function -> Envelope for cell-level change
+  
+  ref = genes[intersect(rownames(genes), c('DPAGT1', names(seg_lookup))),]
+  glycogenes <- genes[intersect(rownames(genes), names(glycogene_lookup)),]
+  genenames = rownames(glycogenes)
+
+  stats = 
+    do.call(rbind, mapply(
+      function(ref_row, ref_gene) { 
+        data <- 
+          as.data.frame(t(apply(glycogenes, 1, function(row) {
+            c(mean=mean(row),
+              rel_mean=mean(row/ref_row),
+              rel_diff=mean(row-ref_row),
+              stdev=sd(row),
+              iqr=iqr(row),
+              samples=length(row))
+            })))
+        cbind(data, tissue = tissue, gene = genenames, ref_gene = ref_gene)
+      },
+      split(ref, rownames(ref)),
+      names(split(ref, rownames(ref))),
+      SIMPLIFY = F))
+  
+  stats
+
+}
+```
+
+```{r}
+readTissueData = function(rse_gene,tissue,samples) {
+
+  mtx = assay(rse_gene)[,samples]
+
+  # We want to normalise the count data per tissue set
+  y = DGEList(counts=mtx,group=rep('X',ncol(mtx)))
+  y = calcNormFactors(y)
+  # Apply the clr to smooth out the data a bit
+  count_clr = apply(cpm(y),2,clr)
+  count_log = apply(cpm(y)+1,2,log)
+
+  rownames(count_log) = stringr::str_replace(rownames(count_log),'\\..*$','')
+  rownames(count_clr) = rownames(count_log)
+
+  gene_lookup = c(glycogene_lookup, seg_lookup)
+  genes = count_log[intersect(rownames(count_log), gene_lookup),]
+  glycogenes_clr = count_clr[intersect((rownames(count_clr)),gene_lookup),]
+  reverse_genes = setNames(names(gene_lookup), gene_lookup)
+  rownames(genes) = reverse_genes[rownames(genes)]
+  rownames(glycogenes_clr) = rownames(genes)
+
+  glycogenes = genes[intersect(rownames(genes), names(gene_lookup)),]
+  glycogenes_clr = glycogenes_clr[intersect(rownames(genes), names(gene_lookup)),]
+
+  genenames = rownames(glycogenes)
+
+  data = reshape2:::melt.matrix(glycogenes, varnames = c('gene','sample_id'), value.name = 'log_cpm', as.is = T)
+
+  ref_data = data[data$gene %in% names(seg_lookup),]
+  ref_data = aggregate.data.frame(
+    x = list(seg_geom_avg = ref_data$log_cpm),
+    by = list(sample_id = ref_data$sample_id),
+    FUN = function(x) { exp(mean(log(x))) })
+
+  data = merge(data, ref_data, by = 'sample_id')
+
+  data$rel_frac = data$log_cpm/data$seg_geom_avg
+  data$rel_diff = data$log_cpm-data$seg_geom_avg
+  data$seg_geom_avg <- NULL
+
+  stats = data.frame(
+    stddev = apply(glycogenes, 1, sd),
+    iqr = apply(glycogenes, 1, iqr),
+    mean_clr = apply(glycogenes_clr, 1, mean),
+    samples = ncol(glycogenes),
+    gene = genenames,
+    ref_gene = 'all')
+
+  stats = merge(data, stats, by = c('gene'))
+  stats$tissue = tissue
+
+  stats
+}
+```
+
+```{r}
+load('TCGA/rse_gene.Rdata')
+
+coldata = subset(colData(rse_gene),gdc_cases.samples.sample_type == 'Solid Tissue Normal')
+
+# Group by tissue
+all_tissues = unique(coldata[,'gdc_cases.project.primary_site'])
+```
+
+```{r}
+tissue_results_tcga_DPAGT1 = lapply(all_tissues, function(tissue) {
+  samples = rownames(subset(coldata, gdc_cases.project.primary_site == tissue))
+  if (length(samples) > 1) {
+    readTissueData(rse_gene,tissue,samples)
+  } else {
+    return()
+  }
+})
+
+tissue_results_tcga_DPAGT1 = do.call(rbind, tissue_results_tcga_DPAGT1)
+
+saveRDS(tissue_results_tcga_DPAGT1,file = 'tissue_results_log_tcga_DPAGT1.Rds')
+```
+
+```{r}
+tissue_results_tcga_perHouseKeepingGene = lapply(all_tissues, function(tissue) {
+  samples = rownames(subset(coldata, gdc_cases.project.primary_site == tissue))
+  if (length(samples) > 1) {
+    readTissueData(rse_gene,tissue,samples)
+  } else {
+    return()
+  }
+})
+
+tissue_results_tcga_perHouseKeepingGene = do.call(rbind, tissue_results_tcga_perHouseKeepingGene)
+
+saveRDS(tissue_results_tcga_perHouseKeepingGene,file = 'tissue_results_log_tcga_perHouseKeepingGene.Rds')
+```
+
+```{r}
+tissue_results_tcga = lapply(all_tissues, function(tissue) {
+  samples = rownames(subset(coldata, gdc_cases.project.primary_site == tissue))
+  if (length(samples) > 1) {
+    readTissueData(rse_gene,tissue,samples)
+  } else {
+    return()
+  }
+})
+
+tissue_results_tcga = do.call(rbind, tissue_results_tcga)
+
+saveRDS(tissue_results_tcga,file = 'tissue_results_log_tcga.Rds')
+```
+
+```{r}
+load('SRP012682/rse_gene_new.Rdata')
+
+# Group by tissue
+all_tissues = unique(colData(rse_gene)[,'smts'])
+```
+
+```{r}
+tissue_results_DPAGT1 = lapply(all_tissues, function(tissue) {
+  message(tissue)
+  samples = rownames(subset(colData(rse_gene),smts == tissue))
+  readTissueData(rse_gene,tissue,samples)
+})
+
+tissue_results_DPAGT1 = do.call(rbind, tissue_results_DPAGT1)
+
+saveRDS(tissue_results_DPAGT1,file = 'tissue_results_log_DPAGT1.Rds')
+```
+
+```{r}
+tissue_results_perHouseKeepingGene = lapply(all_tissues, function(tissue) {
+  message(tissue)
+  samples = rownames(subset(colData(rse_gene),smts == tissue))
+  readTissueData(rse_gene,tissue,samples)
+})
+
+# TODO double check if correct
+tissue_results_perHouseKeepingGene = do.call(rbind, tissue_results_perHouseKeepingGene)
+
+saveRDS(tissue_results_perHouseKeepingGene,file = 'tissue_results_log_perHouseKeepingGene.Rds')
+```
+
+```{r}
+tissue_results = lapply(all_tissues, function(tissue) {
+  message(tissue)
+  samples = rownames(subset(colData(rse_gene),smts == tissue))
+  readTissueData(rse_gene,tissue,samples)
+})
+
+tissue_results = do.call(rbind, tissue_results)
+
+saveRDS(tissue_results,file = 'tissue_results_log.Rds')
+```
+

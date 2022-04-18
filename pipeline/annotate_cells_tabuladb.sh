@@ -23,6 +23,6 @@ info "dumped $sample_identifier barcodes"
 
 info "Retrieving the pre-annotated clusters for $sample_identifier"
 
-cluster_cell_types="$PWD/input/tabuladb_ref/sample_clusters_cell_types.tsv"
+cluster_cell_types="$PWD/input/tabuladb/tabuladb_ref/sample_clusters_cell_types.tsv"
 
 join -t$'\t' -1 4 -2 1 <(grep -F "$sample_identifier" "$cluster_cell_types" | sort -t$'\t' -k4) <(sort -t$'\t' -k1 "$h5ad_parent"/barcodes.tsv) > "${outputdir}/${sample_identifier}.cell_annotation.tsv" && rm "$h5ad_parent"/barcodes.tsv

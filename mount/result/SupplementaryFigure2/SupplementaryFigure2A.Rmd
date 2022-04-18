@@ -1,0 +1,144 @@
+
+```{r include=FALSE}
+library(ggplot2)
+library(matrixStats)
+library(dplyr)
+library(colorspace)
+library(writexl)
+```
+
+```{r}
+file.copy('../../preprocess/generate_bulk_data/tissue_results_log_tcga.Rds', 'tissue_results_log_tcga.Rds')
+tissue_results_tcga = readRDS('tissue_results_log_tcga.Rds')
+file.remove('tissue_results_log_tcga.Rds')
+```
+
+```{r}
+file.copy('../../preprocess/generate_bulk_data/tissue_results_log.Rds','tissue_results_log.Rds')
+tissue_results = readRDS('tissue_results_log.Rds')
+file.remove('tissue_results_log.Rds')
+```
+
+```{r}
+tissue_results_all = rbind(
+  cbind(tissue_results, source='gtex'),
+  cbind(tissue_results_tcga, source='tcga'))
+```
+
+```{r}
+range_of_means_gtex = subset(
+  tissue_results_all,
+  samples > 50 & mean_clr > 0 & source == "gtex" & ref_gene == 'all') %>% 
+  group_by(gene) %>% 
+  summarise(iqr = iqr(rel_diff), sd = sd(rel_diff))
+
+total_tissues = length(
+  unique(
+    subset(
+      tissue_results_all,
+      samples > 50 & mean_clr < 0 & source == "gtex" & ref_gene == 'all')$tissue))
+
+gtex_tissue_counts = subset(
+  tissue_results_all,
+  samples > 50 & mean_clr > 0 & source == "gtex" & ref_gene == 'all') %>% 
+  group_by(gene) %>% 
+  mutate(tissue_fraction = length(unique(tissue))/total_tissues) %>%
+  select(gene, tissue_fraction) %>%
+  unique
+
+range_of_means_gtex = merge(
+  range_of_means_gtex,
+  gtex_tissue_counts,
+  by = 'gene',
+  all.x = T)
+
+range_of_means_tcga = subset(
+  tissue_results_all,
+  samples > 10 & mean_clr > 0 & source == "tcga" & ref_gene == 'all') %>%
+  group_by(gene) %>% 
+  summarise(iqr = iqr(rel_diff), sd = sd(rel_diff))
+
+total_tissues = length(
+  unique(
+    subset(
+      tissue_results_all,
+      samples > 50 & mean_clr < 0 & source == "tcga" & ref_gene == 'all')$tissue))
+
+tcga_tissue_counts = subset(
+  tissue_results_all, 
+  samples > 50 & mean_clr > 0 & source == "tcga" & ref_gene == 'all') %>%
+  group_by(gene) %>%
+  mutate(tissue_fraction = length(unique(tissue))/total_tissues) %>% 
+  select(gene, tissue_fraction) %>%
+  unique
+
+range_of_means_tcga = merge(
+  range_of_means_tcga,
+  tcga_tissue_counts,
+  by = 'gene',
+  all.x = T)
+
+range_of_means = merge(
+  cbind(
+    range_of_means_tcga,
+    source = 'tcga'),
+  cbind(
+    range_of_means_gtex,
+    source = 'gtex'),
+  by = 'gene',
+  suffixes=c('.tcga','.gtex'),
+  all.x = T,
+  all.y = T) %>% 
+  tidyr::replace_na(
+    list(
+      tissue_fraction.tcga = 0,
+      tissue_fraction.gtex = 0))
+```
+
+```{r}
+desat <- function(cols, sat = 0.5) {
+  if (is.na(sat)) {
+    return(cols)
+  }
+    X <- diag(c(1, sat, 1)) %*% rgb2hsv(col2rgb(cols))
+    hsv(X[1,], X[2,], X[3,])
+}
+```
+
+```{r}
+generate_colours = function(values) {
+  fraction_cutoffs = c(0,1/3,2/3,Inf)
+  all_levels = levels(cut(fraction_cutoffs,fraction_cutoffs))
+  cuts = cut(values,fraction_cutoffs)
+  binned_colours = setNames(c('#E40608','#FF7F00','#0065B8'),levels(cuts))
+  binned_colours[cuts]
+}
+generate_saturation = function(colors,values) {
+  fold_changes = c(log(1),log(2),log(3),log(4),log(5),log(10),Inf)
+  all_levels = levels(cut(fold_changes,fold_changes,include.lowest=T))
+  cuts = cut(values,fold_changes,include.lowest=T)
+  saturation_values = setNames(scales::rescale(1:length(levels(cuts)),to=c(0.1,1)),levels(cuts))[cuts]
+  Vectorize(desat)(colors,saturation_values)
+}
+```
+
+```{r}
+output_colours_base = generate_colours(apply(cbind(range_of_means$tissue_fraction.gtex, range_of_means$tissue_fraction.tcga),1,mean))
+output_colours = generate_saturation(output_colours_base, apply(cbind(range_of_means$iqr.gtex, range_of_means$iqr.tcga),1,mean))
+range_of_means_heatmap = data.frame(hgnc = range_of_means$gene, base_color = output_colours_base, color = output_colours)
+```
+
+```{r fig.width=4,fig.height=3}
+ref_colours = na.omit(generate_colours( c(1/3,2/3,1) ))
+variability_breaks = c(log(1),log(2),log(3),log(4),log(5),log(10),Inf)
+y_coords = c( sapply(cut(variability_breaks,variability_breaks,include.lowest = T), function(x) rep(x,length(ref_colours))))
+colours = c( sapply(variability_breaks, function(x) generate_saturation(ref_colours,rep(x,length(ref_colours)))))
+
+ggplot(data.frame(x=rep(names(ref_colours),length(variability_breaks)),y=factor(y_coords,levels(cut(variability_breaks,variability_breaks,include.lowest = T))), colors=colours))+ geom_point(aes(x=x,color=colors,y=y),size=10,shape=15)+scale_color_identity()+theme_minimal()+xlab("Fraction of tissue expressed")+ylab("Maximum fold-change between tissues")+scale_x_discrete(labels=c(">0",">33%",">66%"))+scale_y_discrete(labels=c("<2-fold","<3-fold","<4-fold","<5-fold","<10-fold",">10-fold"))+ggtitle("Heatmap legend")+coord_flip()+theme(panel.grid = element_blank())
+```
+
+```{r}
+writexl::write_xlsx(
+  x = list(range_of_means=range_of_means_heatmap),
+  path = 'range_of_means_heatmap.xlsx')
+```

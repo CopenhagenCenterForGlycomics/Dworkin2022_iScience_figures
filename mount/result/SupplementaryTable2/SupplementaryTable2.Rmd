@@ -1,0 +1,27 @@
+# Supplementary Table 2 generation
+
+```{r}
+library(writexl)
+library(Matrix)
+```
+
+```{r}
+file.copy('../../preprocess/generate_single_cell_data/alldata_pseudobulkpresence.Rds', 'alldata_pseudobulkpresence.Rds')
+annotations <- unique(gsub('^SMALL_', '' ,readRDS('alldata_pseudobulkpresence.Rds')$cluster))
+file.remove('alldata_pseudobulkpresence.Rds')
+```
+
+```{r}
+annotations <- gsub('_cluster_.*$', '', annotations)
+annotations <- data.frame(x = annotations)
+annotations <- tidyr::separate(annotations, x, c('Tissue','Distinct celltypes'), ':')
+human_summary_table <- setNames(as.data.frame(table(annotations$Tissue)), names(annotations))
+```
+
+```{r}
+writexl::write_xlsx(
+  x = list(
+    `Celltypes in human tissues` = human_summary_table), 
+    # `Celltypes in mouse tissues` = mouse_summary_table),
+  path = 'SupplementaryTable2.xlsx')
+```

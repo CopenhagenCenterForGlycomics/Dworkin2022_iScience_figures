@@ -1,0 +1,80 @@
+
+```{r include=FALSE}
+library(ggplot2)
+library(dplyr)
+```
+
+```{r}
+file.copy('../../preprocess/generate_bulk_data/tissue_results_log.Rds', 'tissue_results_log.Rds')
+tissue_results = readRDS('tissue_results_log.Rds')
+file.remove('tissue_results_log.Rds')
+```
+
+```{r}
+file.copy('../../preprocess/generate_bulk_data/tissue_results_log_tcga.Rds', 'tissue_results_log_tcga.Rds')
+tissue_results_tcga = readRDS('tissue_results_log_tcga.Rds')
+file.remove('tissue_results_log_tcga.Rds')
+```
+
+```{r}
+tissue_results_all = rbind(
+  cbind(tissue_results, source='gtex'),
+  cbind(tissue_results_tcga, source='tcga'))
+```
+
+```{r include=FALSE}
+gtex_common = subset(
+  tissue_results_all,
+  samples > 50 & mean_clr > 0 & source == 'gtex' & tissue %in% c('Breast','Lung','Prostate'),
+  c('gene','rel_diff','tissue','sample_id','ref_gene')) %>%
+  group_by(gene, tissue, ref_gene) %>%
+  summarize(mean.tissue.rel_diff = mean(rel_diff))
+
+tcga_common = subset(
+  tissue_results_all,
+  samples > 50 & mean_clr > 0 & source == 'tcga' & tissue %in% c('Breast','Lung','Prostate'),
+  c('gene','rel_diff','tissue','sample_id','ref_gene')) %>%
+  group_by(gene, tissue, ref_gene) %>%
+  summarize(mean.tissue.rel_diff = mean(rel_diff))
+
+compared_means = merge(
+  tcga_common,
+  gtex_common,
+  by = c('gene','tissue','ref_gene'),
+  suffixes=c('.tcga','.gtex'))
+```
+
+```{r echo=FALSE, fig.height=7, fig.width=7}
+ggplot() +
+  geom_point(
+    data = compared_means, 
+    aes(x = mean.tissue.rel_diff.gtex, y = mean.tissue.rel_diff.tcga, color = tissue)) +
+  facet_wrap(~ref_gene, nrow = 5, ncol = 5) + 
+  geom_text(
+    data = with(
+      compared_means, 
+      do.call(rbind, by(
+        cbind.data.frame(mean.tissue.rel_diff.tcga, mean.tissue.rel_diff.gtex, ref_gene), 
+        ref_gene, 
+        function(df) { 
+          data.frame(
+            corr = paste0(
+              'r = ', 
+              round(cor.test(df$mean.tissue.rel_diff.tcga, df$mean.tissue.rel_diff.gtex, method = 'pearson', alternative = 'two.sided')$estimate, digits = 2),
+              '; p = ', 
+              signif(cor.test(df$mean.tissue.rel_diff.tcga, df$mean.tissue.rel_diff.gtex, method = 'pearson', alternative = 'two.sided')$p.value, digits = 3)),
+            ref_gene = df$ref_gene[1], 
+            x = Inf, 
+            y = Inf) }))), 
+    aes(x = Inf, y = Inf, label = corr), vjust = "inward", hjust = "inward") +
+  theme_minimal() +
+  ggtitle(
+    paste(
+      "Mean relative expression of ",
+      length(unique(compared_means$gene)),
+      " GTfs to DPAGT1, correlation=",
+      round(cor(compared_means$mean.tissue.rel_diff.tcga, compared_means$mean.tissue.rel_diff.gtex), digits=2),
+      sep="")) +
+  ylab("TCGA mean expression") +
+  xlab("GTEX mean expression")
+```

@@ -1,13 +1,13 @@
 #!/bin/bash
 
 database_id="$1"
-accession_file="$PWD"/input/"$2"
-samples_folder="$PWD"/input/"$3"
+accession_file="$PWD"/input/"$database_id"/"$2"
+samples_folder="$PWD"/preprocess/"$3"
 
 mkdir -p "$samples_folder"
 	
 ## storing paths to H5ad objects for each sample in array (each sample contains both chromium10x and smartseq2 reads)
-H5ad_array=( $(tar -tf "$PWD"/input/TabulaSapiensV3.tgz | grep -f "$accession_file" | grep -v './._') )
+H5ad_array=( $(tar -tf "$PWD"/input/"$database_id"/TabulaSapiensV3.tgz | grep -f "$accession_file" | grep -v './._') )
 H5ad_array=("${H5ad_array[0]}")
 
 ## Shaping data for input to alona pipeline
@@ -26,7 +26,7 @@ for H5ad in "${H5ad_array[@]}"; do
 			
 	## extracting H5ad object from 15 GB tar
 	echo "extracting H5ad"
-	tar -xOzf "$PWD"/input/TabulaSapiensV3.tgz $H5ad > "$samples_folder"/"$tissue_folder"/"$tissue_file"
+	tar -xOzf "$PWD"/input/"$database_id"/TabulaSapiensV3.tgz $H5ad > "$samples_folder"/"$tissue_folder"/"$tissue_file"
 		
 	## extracting cell type annotation from H5ad object
 	echo "extracting cell type annotations"
