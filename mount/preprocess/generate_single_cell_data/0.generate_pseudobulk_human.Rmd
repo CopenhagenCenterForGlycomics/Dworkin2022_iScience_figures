@@ -1,8 +1,13 @@
 
 ```{r}
 if(!file.exists("alldata_human.Rds")){
-  rds = list.files(path='hsap_tabuladb_pseudobulk/', pattern='.Rds.gz')
-  raw_alldata = sapply(paste('hsap_tabuladb_pseudobulk/',rds,sep=''), function(x) { readRDS(gzfile(x)) })
+  rds = list.files(path = '../hsap_samples_tabuladb/', pattern = '.Rds.gz', recursive = T)
+  raw_alldata = sapply(paste('../hsap_samples_tabuladb/', rds, sep = ''), function(x) { 
+    y <- gzfile(x)
+    z <- gzcon(y)
+    data = readRDS(z)
+    close(z)
+    data })
 }
 ```
 

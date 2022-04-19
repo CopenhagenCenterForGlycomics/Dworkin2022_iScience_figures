@@ -1,8 +1,13 @@
 
 ```{r}
 if(!file.exists("alldata_mouse.Rds")){
-  rds = list.files(path='mmus_panglaodb_pseudobulk/', pattern='.Rds.gz')
-  raw_alldata = sapply(paste('mmus_panglaodb_pseudobulk/',rds,sep=''), function(x) { readRDS(gzfile(x)) })
+  rds = list.files(path = '../mmus_samples_panglaodb/', pattern = '.Rds.gz', recursive = T)
+  raw_alldata = sapply(paste('../mmus_samples_panglaodb/', rds, sep = ''), function(x) { 
+    y <- gzfile(x)
+    z <- gzcon(y)
+    data = readRDS(z)
+    close(z)
+    data })
 }
 ```
 

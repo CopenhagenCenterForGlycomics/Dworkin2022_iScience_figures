@@ -1,7 +1,7 @@
 ```{r}
 if(!file.exists("alldata_human_pseudopresence.Rds")){
-  tsv = list.files(path='hsap_tabuladb_pseudopresence/', pattern='.gz')
-  raw_alldata = sapply(paste('hsap_tabuladb_pseudopresence/', tsv, sep=''), function(x) { read.delim(gzfile(x), check.names = F) })
+  tsv = list.files(path = '../hsap_samples_tabuladb/', pattern = 'tsv.gz', recursive = T)
+  raw_alldata = sapply(paste('../hsap_samples_tabuladb/', tsv, sep = ''), function(x) { read.delim(gzfile(x), check.names = F) })
 }
 ```
 

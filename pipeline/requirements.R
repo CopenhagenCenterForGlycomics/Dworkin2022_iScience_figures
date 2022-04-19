@@ -8,7 +8,7 @@ remotes::install_version("ggpubr", version = "0.2.4", repos = "http://cran.us.r-
 remotes::install_version("gridExtra", version = "2.3", repos = "http://cran.us.r-project.org")
 remotes::install_version("ggplotify", version = "0.0.5", repos = "http://cran.us.r-project.org")
 remotes::install_version("ggrepel", version = "0.8.2", repos = "http://cran.us.r-project.org")
-remotes::install_version("here", version = "0.1", repos = "http://cran.us.r-project.org")
+remotes::install_version("here", version = "1.0.1", repos = "http://cran.us.r-project.org")
 remotes::install_version("hdf5r", version = "1.3.3", repos = "http://cran.us.r-project.org")
 remotes::install_version("locfit", version = "1.5.9.1", repos = "http://cran.us.r-project.org")
 remotes::install_version("Matrix", version = "1.2-18", repos = "http://cran.us.r-project.org")

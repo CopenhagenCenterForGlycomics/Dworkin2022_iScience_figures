@@ -8,6 +8,7 @@ RUN apt-get update \
 	curl \
 	libxml2-dev \
 	libhdf5-dev \
+	pandoc \
 	libpq-dev python3.6 python3-pip python3-setuptools python3-dev
 
 # installing remotes R package
