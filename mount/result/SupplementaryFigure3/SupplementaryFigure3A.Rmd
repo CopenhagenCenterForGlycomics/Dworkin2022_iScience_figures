@@ -1,5 +1,5 @@
 
-```{r include=FALSE}
+```{r}
 library(ggplot2)
 library(dplyr)
 library(cowplot)
@@ -52,13 +52,13 @@ median_cutoff=median(cutoffs)
 
 ```{r}
 single_cell_to_bulk_plot = function(gene) {
-  
+
   main_data = tissue_results_all[
     tissue_results_all$gene == gene &          # explicitly filtering for gene
       tissue_results_all$ref_gene == 'all' &   # explicitly filtering for quants normalised by all segs
       tissue_results_all$samples > 10 &        # explicitly filtering for tissue with greater than 10 samples
       tissue_results_all$log_cpm > log(1.05),] # explicitly filtering for sample with TPM > 0.05
-  
+
   secondary_data = sc_seg_rel_diff.df[sc_seg_rel_diff.df$gene == gene,]
   pseudobulk_data = pseudobulk_rel_diff[pseudobulk_rel_diff$gene == gene,]
   pseudobulk_data_mouse_known = subset(pseudobulk_data, source == 'mouse' & !is_unknown)
@@ -103,8 +103,8 @@ single_cell_to_bulk_plot = function(gene) {
       panel.grid.minor = element_blank(),
       panel.background = element_blank(),
       plot.margin = unit(c(0,0,0,0), "cm"))
-  
-  bulk_plot = 
+
+  bulk_plot =
     ggplot(main_data) +
     geom_vline(xintercept = 0, color = 'black') +
     geom_histogram(
@@ -112,7 +112,7 @@ single_cell_to_bulk_plot = function(gene) {
       binwidth = 0.25,
       stat = "bin") +
     scale_x_continuous(
-      limits = c(-6, 6), 
+      limits = c(-6, 6),
       breaks = seq(-6, 6, by = 2),
       minor_breaks = seq(-5, 5, by = 2)) +
     scale_fill_manual(
@@ -123,10 +123,10 @@ single_cell_to_bulk_plot = function(gene) {
         'unexpressed tcga' = '#c8d9d177',
         mouse = 'blue',
         human = 'red'))
-  
+
   bulk_plot.df = ggplot_build(bulk_plot)$data[[2]]
   max_count = with(bulk_plot.df, max(aggregate.data.frame(x = list(sum = count), by = list(x = x), FUN = sum)$sum))
-  
+
   bulk_plot = bulk_plot +
     scale_y_continuous(
       breaks = seq.default(0, max_count, length.out = 5)) +
@@ -250,11 +250,11 @@ file.remove('glycogene_lookup.Rds')
 ```
 
 ```{r}
-shared_lookup = 
+shared_lookup =
   intersect(
-    names(glycogene_lookup), 
+    names(glycogene_lookup),
     intersect(
-        unique(pseudobulk_rel_diff$gene), 
+        unique(pseudobulk_rel_diff$gene),
         unique(subset(tissue_results_all, samples > 10 & log_cpm > log(1.05))$gene)))
 ```
 
@@ -263,7 +263,7 @@ shared_lookup =
 ```{r full_histograms, fig.height=60, fig.width=30, warning=FALSE}
 oldw = getOption("warn")
 options(warn=-1)
-gridobjs = gridExtra::arrangeGrob(grobs = lapply(shared_lookup, single_cell_to_bulk_plot), ncol=10)
+gridobjs = gridExtra::arrangeGrob(grobs = lapply(shared_lookup, single_cell_to_bulk_plot), ncol= 10)
 options(warn=oldw)
 grid::grid.draw(gridobjs)
 ```

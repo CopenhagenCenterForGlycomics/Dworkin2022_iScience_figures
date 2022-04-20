@@ -5,9 +5,11 @@ library(writexl)
 library(Matrix)
 ```
 
+# human
+
 ```{r}
 file.copy('../../preprocess/generate_single_cell_data/alldata_pseudobulkpresence.Rds', 'alldata_pseudobulkpresence.Rds')
-annotations <- unique(gsub('^SMALL_', '' ,readRDS('alldata_pseudobulkpresence.Rds')$cluster))
+annotations <- unique(gsub('^SMALL_', '' , readRDS('alldata_pseudobulkpresence.Rds')$cluster))
 file.remove('alldata_pseudobulkpresence.Rds')
 ```
 
@@ -18,10 +20,62 @@ annotations <- tidyr::separate(annotations, x, c('Tissue','Distinct celltypes'),
 human_summary_table <- setNames(as.data.frame(table(annotations$Tissue)), names(annotations))
 ```
 
+# mouse
+
+## need to replicate results of supplementary table 2 here !!!
+
+```{r}
+file.copy('../../preprocess/generate_single_cell_data/glycogene_mouse_panglaodb_pseudobulkpresence.Rds', 'glycogene_mouse_panglaodb_pseudobulkpresence.Rds')
+annotations <- readRDS('glycogene_mouse_panglaodb_pseudobulkpresence.Rds')$cluster
+file.remove('glycogene_mouse_panglaodb_pseudobulkpresence.Rds')
+```
+
+```{r}
+annotations <- annotations[!grepl('Unknown', annotations)]
+annotations <- gsub('^SMALL_', '', annotations)
+annotations <- gsub('_cluster.*$', '', annotations)
+annotations <- unique(annotations)
+
+annotations <- gsub('SRS/panglao:', '', annotations) #TODO fix
+
+annotations <- data.frame(anno = annotations)
+annotations <- tidyr::separate(annotations, anno, c('Tissue','Distinct celltypes'), ':', F)
+```
+
+```{r}
+brain_filter <- gsub('_([A-Z])',':\\1', readLines('mouse_neural_whitelist.tsv'))
+brain_filter <- brain_filter[!grepl('Unknown', brain_filter)]
+brain_filter <- data.frame(brain_anno = brain_filter)
+brain_filter <- tidyr::separate(brain_filter, brain_anno, c('Tissue','Distinct celltypes'), ':', F)
+annotations_brain <- annotations[with(annotations, anno %in% unique(brain_filter$brain_anno)),]
+```
+
+```{r}
+haema_filter <- gsub('_([A-Z])',':\\1', readLines('mouse_haematopoetic_whitelist.tsv'))
+haema_filter <- haema_filter[!grepl('Unknown', haema_filter)]
+haema_filter <- data.frame(haema_anno = haema_filter)
+haema_filter <- tidyr::separate(haema_filter, haema_anno, c('Tissue','Distinct celltypes'), ':', F)
+annotations_haema <- annotations[with(annotations, anno %in% unique(haema_filter$haema_anno)),]
+```
+
+
+```{r}
+annotations <- annotations[with(annotations, !(Tissue %in% unique(annotations_brain$Tissue))),]
+annotations <- annotations[with(annotations, !(Tissue %in% unique(annotations_haema$Tissue))),]
+annotations <- rbind(
+  annotations,
+  annotations_haema,
+  annotations_brain)
+```
+
+```{r}
+mouse_summary_table <- setNames(as.data.frame(table(annotations$Tissue)), names(annotations)[2:3])
+```
+
 ```{r}
 writexl::write_xlsx(
   x = list(
-    `Celltypes in human tissues` = human_summary_table), 
+    `Celltypes in human tissues` = human_summary_table),
     # `Celltypes in mouse tissues` = mouse_summary_table),
   path = 'SupplementaryTable2.xlsx')
 ```

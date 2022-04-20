@@ -17,37 +17,37 @@ file.remove('alldata_pseudobulkpresence.Rds')
 ```{r}
 # filtering for clusters of adequate size, annotation, and expression ----
 filtering <- function(gene_expression.df, taxon_id = c('9606', '10090'), glycogenes_only = F, other_genes = NULL, gte200 = T, annotated = T) {
-  
+
   # filtering out non glycogenes ---
   if(glycogenes_only) {
     genes.vec <- switch(
-      taxon_id, 
+      taxon_id,
       '9606' = c(readLines('9606_glycogenes.txt'), other_genes),
       '10090' = c(readLines('data/genesets/10090_glycogenes.txt'), other_genes))
     gene_expression.df <- gene_expression.df[with(
       gene_expression.df, gene %in% genes.vec),]
   }
-  
+
   # filtering out clusters with less than 200 cells ----
-  gene_expression.df <- 
+  gene_expression.df <-
     if(gte200) {
       gene_expression.df[with(
         gene_expression.df,
         cellnum >= 200),]
     } else { gene_expression.df }
-  
+
   # filtering out clusters with unknown celltype annotation ----
-  gene_expression.df <- 
+  gene_expression.df <-
     if(isTRUE(annotated)) {
       gene_expression.df <- gene_expression.df[with(
-        gene_expression.df, 
+        gene_expression.df,
         !(grepl(':Unknown', cluster))),]
     } else if(isFALSE(annotated)) {
       gene_expression.df <- gene_expression.df[with(
-        gene_expression.df, 
+        gene_expression.df,
         grepl(':Unknown', cluster)),]
     } else { gene_expression.df }
-  
+
   return(gene_expression.df)
 
 }
@@ -62,21 +62,21 @@ germ_layer.char <- 'annotated'
 
 ```{r}
 germ_layer_epitope_combinatorics <- function(epitope.list, filter.list = NA, germ_layer.df) {
-  
+
   germ_layer.df$gene <- toupper(germ_layer.df$gene)
   germ_layer.df <- reshape2::dcast(germ_layer.df, cluster ~ gene, value.var = 'status5E-03')
   germ_layer.df[germ_layer.df == 'unpredictable'] <- 'unexpressed'
-  
+
   expression_status_summarizer <- function(g.vec, i.int, e.char) { rowSums(germ_layer.df[, g.vec, drop = FALSE] == e.char) >= i.int }
-  
+
   epitope_combinatorics_summarizer <- function(b.list) { Reduce(function(x, y) { x & y }, b.list ) }
-  
+
   # filter_combinatorics_summarizer <- function(b.list) { Reduce(function(x, y) { x | y }, b.list ) }
-  
-  epitope_combinatorics.vec <- 
+
+  epitope_combinatorics.vec <-
     if(is.na(filter.list)) {
       sapply(epitope.list, function(g.list) {
-        clusters.bool <- 
+        clusters.bool <-
           epitope_combinatorics_summarizer(lapply(g.list, expression_status_summarizer, e.char = 'expressed', i.int = 1 ))
         clusters.vec <- germ_layer.df$cluster[clusters.bool]
         attributes(clusters.vec)$num_clusters <- sum(clusters.bool)/nrow(germ_layer.df)*100
@@ -85,7 +85,7 @@ germ_layer_epitope_combinatorics <- function(epitope.list, filter.list = NA, ger
     } else {
       mapply(
         function(g.list, f.list) {
-          clusters.bool <- 
+          clusters.bool <-
             Reduce(
               function(x, y) { x & y },
               list(
@@ -98,15 +98,15 @@ germ_layer_epitope_combinatorics <- function(epitope.list, filter.list = NA, ger
           clusters.vec },
         epitope.list, filter.list, SIMPLIFY = T)
     }
-  
+
   return(epitope_combinatorics.vec)
-  
+
 }
 ```
 
 ```{r}
 pathway_expression_combinatorics <- function(pathway.list, pathway.df, i, driver_isoform, mode) {
-  
+
   # list of booleans for each gene's cluster-specific expression status ----
   bool.list <- lapply(
     pathway.list, function(gene.vec) {
@@ -114,41 +114,41 @@ pathway_expression_combinatorics <- function(pathway.list, pathway.df, i, driver
       split(
         with(pathway_subset.df, `status5E-03` == 'expressed'),
         rep(gene.vec, each = nrow(pathway_subset.df))) })
-  
+
   # dataframe of booleans for each gene's cluster-specific expression status ----
   pathway.df <- data.frame(
-    sapply(bool.list, function(bool.df) { 
+    sapply(bool.list, function(bool.df) {
       Reduce(function(x, y) { x | y }, bool.df) }))
-  
+
   # dataframe of combinatorically generated geneset-specific expression ----
   names(pathway.df) <- gsub('^.*\\.', '', names(pathway.df))
-  
-  driver_intersects.df <- 
+
+  driver_intersects.df <-
     setNames(
       as.data.frame(
         table(rowSums(pathway.df)[
           rowSums(pathway.df[,grep(driver_isoform, colnames(pathway.df), value = T), drop = F]) > 0])),
       c('degree','driver_intersects'))
-      
+
   total_intersects.df <-
     setNames(
       as.data.frame(
-        table(rowSums(pathway.df))), 
+        table(rowSums(pathway.df))),
       c('degree','total_intersects'))
-  
+
   plot.df <- merge(driver_intersects.df, total_intersects.df)
   plot.df$no_intersects <- NA
   plot.df <- rbind.data.frame(
     data.frame(
-      degree = 0, 
-      driver_intersects = NA, 
-      total_intersects = NA, 
+      degree = 0,
+      driver_intersects = NA,
+      total_intersects = NA,
       no_intersects = 229 - sum(plot.df$total_intersects)),
     plot.df)
-  
+
   plot.df$degree <- as.numeric(plot.df$degree)
-  
-  ggplot(plot.df) + 
+
+  ggplot(plot.df) +
     geom_col(aes(x = degree, y = total_intersects), fill = 'lightgrey') +
     geom_col(aes(x = degree, y = driver_intersects), fill = 'grey') +
     geom_col(aes(x = degree, y = no_intersects), fill = 'black') +
@@ -157,7 +157,7 @@ pathway_expression_combinatorics <- function(pathway.list, pathway.df, i, driver
     coord_cartesian(xlim = c(-0.5, ncol(pathway.df) + 0.5)) +
     ggtitle(paste0(colnames(pathway.df), collapse = '|')) +
     theme_minimal()
-  
+
 }
 ```
 
@@ -240,7 +240,7 @@ annotated_isoenzyme.list <- list(
 
 ```
 
-# Figure4D 
+# Figure4D
 
 ```{r annotated_isoenzyme3_bespoke, fig.height=3.5, fig.width=3.5, message=FALSE, warning=FALSE}
 
@@ -369,7 +369,7 @@ epitope_combinatorics.list <- c(
 epitope.df$annotated <- unlist(lapply(epitope_combinatorics.list, attributes))
 ```
 
-# Figure4D 
+# Figure4D
 
 ```{r}
 writexl::write_xlsx(

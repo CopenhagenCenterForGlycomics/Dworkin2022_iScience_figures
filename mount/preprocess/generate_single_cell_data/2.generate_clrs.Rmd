@@ -1,16 +1,20 @@
 
-```{r setup, include=F}
+# loading libraries
+
+```{r libraries}
 library(dplyr)
 library(compositions)
 library(Matrix)
 ```
 
-```{r include=FALSE}
+# loading pseudobulk model
+
+```{r pseudobulk_model1}
 expression_model.lm <- readRDS('lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds')
-cutoff.int <- mean(expression_model.lm$xy.df$y[1:7]) 
+cutoff.int <- mean(expression_model.lm$xy.df$y[1:7])
 
 compute_threshold <- function(ncells) {
-  
+
   s <-
     stats::predict(
       expression_model.lm$model2.lm,
@@ -18,23 +22,23 @@ compute_threshold <- function(ncells) {
       se.fit = TRUE,
       level = 0.95,
       interval = "confidence")$fit[,'fit']
-  
+
   return(s)
-  
+
 }
 ```
 
-```{r include=FALSE}
+```{r pseudobulk_model2}
 compute_pvalue <- function(pseudobulk, threshold) {
-  
+
   n   <- 7 # chosen based on the number of pseudobulk sizes that model is fit to
-  ts  <- (cutoff.int - pseudobulk)/(threshold/sqrt(n)) 
+  ts  <- (cutoff.int - pseudobulk)/(threshold/sqrt(n))
   p   <- 2*pt(-abs(ts), n-1)
-  
+
   return(p)
-  
+
 }
-  
+
 expression_status_call <- function(threshold,pseudobulk) {
   if (is.na(pseudobulk)) {
     return("unexpressed")
@@ -42,12 +46,12 @@ expression_status_call <- function(threshold,pseudobulk) {
   if (pseudobulk == 0) {
     return("unexpressed")
   }
-  
+
   expression_status_call_raw(threshold,pseudobulk)
 }
 
 expression_status_call_raw <- function(threshold, pseudobulk) {
-  
+
   expression <- pseudobulk > cutoff.int
   pvalue     <- compute_pvalue(pseudobulk, threshold)
   if (is.na(expression)) {
@@ -55,7 +59,7 @@ expression_status_call_raw <- function(threshold, pseudobulk) {
   }
   status <- if(expression) { 'expressed' } else { 'unexpressed' }
   status <- if(pvalue > 5E-03) { 'unpredictable' } else { status }
-  
+
   return(status)
 }
 
@@ -66,7 +70,9 @@ is_expressed <- function(pseudobulks) {
 }
 ```
 
-```{r include=FALSE}
+# computing mouse clrs
+
+```{r mouse_genes}
 ortho_trans_table=with(read.delim('mouse_orthology_human_genes.tsv'),setNames(mouse_symbol,human_symbol))
 ```
 
@@ -78,31 +84,33 @@ colnames(alldata_clean_mouse) = recode(colnames(alldata_clean_mouse), Tmem5='Rxy
 rm(alldata)
 ```
 
-```{r}
+```{r mouse_clustersize}
 alldata=list()
-attributes(alldata)$clustersize = c(attributes(alldata_clean_mouse)$clustersize) 
+attributes(alldata)$clustersize = c(attributes(alldata_clean_mouse)$clustersize)
 ```
 
-```{r}
+```{r mouse_thresholds}
 attributes(alldata)$thresholds = sapply(attributes(alldata)$clustersize,compute_threshold)
 ```
 
-```{r}
+```{r mouse_filter}
 required_genes=c('Dpagt1','Alg2')
 passing_cells = apply(apply(alldata_clean_mouse[,required_genes],2,is_expressed) ,1,all)
 passing_cells = passing_cells & apply(apply(alldata_clean_mouse[,c('Alg13','Alg14')],2,is_expressed),1,any)
 alldata_clean_mouse = alldata_clean_mouse[which(passing_cells),]
 ```
 
-```{r}
+```{r mouse_sparse}
 alldata_clean_mouse_clr = Matrix(apply(alldata_clean_mouse,2,clr),sparse = T)
 saveRDS(alldata_clean_mouse_clr,'alldata_clean_mouse_clr_sparse.Rds')
 ```
 
-```{r}
+```{r mouse_remove}
 rm(alldata_clean_mouse)
 rm(alldata_clean_mouse_clr)
 ```
+
+# computing human clrs
 
 ```{r load_datasets_human}
 alldata = readRDS('alldata_human.Rds')
@@ -112,28 +120,28 @@ colnames(alldata_clean_human) = recode(colnames(alldata_clean_human), TMEM5='RXY
 rm(alldata)
 ```
 
-```{r}
+```{r human_clustersize}
 alldata=list()
-attributes(alldata)$clustersize = c(attributes(alldata_clean_human)$clustersize) 
+attributes(alldata)$clustersize = c(attributes(alldata_clean_human)$clustersize)
 ```
 
-```{r}
+```{r human_threshold}
 attributes(alldata)$thresholds = sapply(attributes(alldata)$clustersize,compute_threshold)
 ```
 
-```{r}
+```{r human_filter}
 required_genes=c('DPAGT1','ALG2')
 passing_cells = apply(apply(alldata_clean_human[,required_genes],2,is_expressed) ,1,all)
 passing_cells = passing_cells & apply(apply(alldata_clean_human[,c('ALG13','ALG14')],2,is_expressed),1,any)
 alldata_clean_human = alldata_clean_human[which(passing_cells),]
 ```
 
-```{r}
+```{r human_sparse}
 alldata_clean_human_clr = Matrix(apply(alldata_clean_human,2,clr),sparse = T)
 saveRDS(alldata_clean_human_clr,'alldata_clean_human_clr_sparse.Rds')
 ```
 
-```{r}
+```{r human_remove}
 rm(alldata_clean_human)
 rm(alldata_clean_human_clr)
 ```

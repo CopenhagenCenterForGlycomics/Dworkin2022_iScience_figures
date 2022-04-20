@@ -151,7 +151,7 @@ def simple_default_pipeline(adata, filter_kw={}):
 def perform_pipeline(infile, outfile):
   
   adata = sc.read_text(
-    filename = filename,  
+    filename = infile,  
     delimiter = '\t', 
     first_column_names = True, 
     dtype = 'float32')
@@ -164,12 +164,12 @@ def perform_pipeline(infile, outfile):
   
   return
 
-infile = '/preprocess/generate_model_data/chromium10x_replicate1_raw_umis.tsv'
-outfile = '/preprocess/generate_model_data/chromium10x_replicate1_normalized_umis'
+infile = '/home/preprocess/generate_model_data/chromium10x_replicate1_raw_umis.tsv'
+outfile = '/home/preprocess/generate_model_data/chromium10x_replicate1_normalized_umis'
 perform_pipeline(infile = infile, outfile = outfile)
 
-infile = '/preprocess/generate_model_data/chromium10x_replicate2_raw_umis.tsv'
-outfile = '/preprocess/generate_model_data/chromium10x_replicate2_normalized_umis'
+infile = '/home/preprocess/generate_model_data/chromium10x_replicate2_raw_umis.tsv'
+outfile = '/home/preprocess/generate_model_data/chromium10x_replicate2_normalized_umis'
 perform_pipeline(infile = infile, outfile = outfile)
 
 

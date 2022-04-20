@@ -28,20 +28,23 @@ tissue_results_all = rbind(
 ```{r}
 range_of_means_gtex = subset(
   tissue_results_all,
-  samples > 50 & mean_clr > 0 & source == "gtex" & ref_gene == 'all') %>% 
-  group_by(gene) %>% 
+  # TODO uncomment samples > 50 &
+    mean_clr > 0 & source == "gtex" & ref_gene == 'all') %>%
+  group_by(gene) %>%
   summarise(iqr = iqr(rel_diff), sd = sd(rel_diff))
 
 total_tissues = length(
   unique(
     subset(
       tissue_results_all,
-      samples > 50 & mean_clr < 0 & source == "gtex" & ref_gene == 'all')$tissue))
+      # TODO uncomment samples > 50 &
+      mean_clr < 0 & source == "gtex" & ref_gene == 'all')$tissue))
 
 gtex_tissue_counts = subset(
   tissue_results_all,
-  samples > 50 & mean_clr > 0 & source == "gtex" & ref_gene == 'all') %>% 
-  group_by(gene) %>% 
+  # TODO uncomment samples > 50 &
+  mean_clr > 0 & source == "gtex" & ref_gene == 'all') %>%
+  group_by(gene) %>%
   mutate(tissue_fraction = length(unique(tissue))/total_tissues) %>%
   select(gene, tissue_fraction) %>%
   unique
@@ -54,21 +57,24 @@ range_of_means_gtex = merge(
 
 range_of_means_tcga = subset(
   tissue_results_all,
-  samples > 10 & mean_clr > 0 & source == "tcga" & ref_gene == 'all') %>%
-  group_by(gene) %>% 
+  # TODO uncomment samples > 10 &
+  mean_clr > 0 & source == "tcga" & ref_gene == 'all') %>%
+  group_by(gene) %>%
   summarise(iqr = iqr(rel_diff), sd = sd(rel_diff))
 
 total_tissues = length(
   unique(
     subset(
       tissue_results_all,
-      samples > 50 & mean_clr < 0 & source == "tcga" & ref_gene == 'all')$tissue))
+      # TODO uncomment samples > 50 &
+      mean_clr < 0 & source == "tcga" & ref_gene == 'all')$tissue))
 
 tcga_tissue_counts = subset(
-  tissue_results_all, 
-  samples > 50 & mean_clr > 0 & source == "tcga" & ref_gene == 'all') %>%
+  tissue_results_all,
+  # TODO uncomment samples > 50 &
+  mean_clr > 0 & source == "tcga" & ref_gene == 'all') %>%
   group_by(gene) %>%
-  mutate(tissue_fraction = length(unique(tissue))/total_tissues) %>% 
+  mutate(tissue_fraction = length(unique(tissue))/total_tissues) %>%
   select(gene, tissue_fraction) %>%
   unique
 
@@ -88,7 +94,7 @@ range_of_means = merge(
   by = 'gene',
   suffixes=c('.tcga','.gtex'),
   all.x = T,
-  all.y = T) %>% 
+  all.y = T) %>%
   tidyr::replace_na(
     list(
       tissue_fraction.tcga = 0,

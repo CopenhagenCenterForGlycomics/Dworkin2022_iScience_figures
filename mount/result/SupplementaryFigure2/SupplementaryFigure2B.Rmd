@@ -14,7 +14,10 @@ file.remove('alldata_clean_human_clr_sparse.Rds')
 ```
 
 ```{r}
+file.copy('../../preprocess/generate_single_cell_data/glycogenes.tsv', 'glycogenes.tsv')
 glycogenes=read.delim('glycogenes.tsv',header=F)$V1
+file.remove('glycogenes.tsv')
+
 full_clr = cbind(subset(reshape2::melt(as.matrix(alldata_clean_human_clr[,intersect(glycogenes,colnames(alldata_clean_human_clr))])),value != 0),data='human')
 full_clr$Var2 = as.character(full_clr$Var2)
 full_clr$tissue_cell = stringr::str_replace(stringr::str_replace(full_clr$Var1,'^SR[^:]+:',''),'_cluster.*','')
@@ -27,8 +30,6 @@ clrs_by_cell_tissue = full_clr %>% group_by(Var2,tissue_cell,data) %>% summarise
 ```
 
 ```{r}
-glycogenes = read.delim('glycogenes.tsv',header=F)$V1
-
 calculate_expressed_ratio = function(pseudobulks) {
   results = apply(pseudobulks[, intersect(glycogenes,colnames(pseudobulks)) ],2,function(x) sum(is_expressed(x),na.rm=T)/nrow(pseudobulks) )
   results
@@ -54,15 +55,15 @@ file.remove('alldata_human.Rds')
 
 ```{r}
 compute_pvalue <- function(pseudobulk, threshold) {
-  
+
   n   <- 7 # chosen based on the number of pseudobulk sizes that model is fit to
-  ts  <- (cutoff.int - pseudobulk)/(threshold/sqrt(n)) 
+  ts  <- (cutoff.int - pseudobulk)/(threshold/sqrt(n))
   p   <- 2*pt(-abs(ts), n-1)
-  
+
   return(p)
-  
+
 }
-  
+
 expression_status_call <- function(threshold,pseudobulk) {
   if (is.na(pseudobulk)) {
     return("unexpressed")
@@ -70,12 +71,12 @@ expression_status_call <- function(threshold,pseudobulk) {
   if (pseudobulk == 0) {
     return("unexpressed")
   }
-  
+
   expression_status_call_raw(threshold,pseudobulk)
 }
 
 expression_status_call_raw <- function(threshold, pseudobulk) {
-  
+
   expression <- pseudobulk > cutoff.int
   pvalue     <- compute_pvalue(pseudobulk, threshold)
   if (is.na(expression)) {
@@ -83,7 +84,7 @@ expression_status_call_raw <- function(threshold, pseudobulk) {
   }
   status <- if(expression) { 'expressed' } else { 'unexpressed' }
   status <- if(pvalue > 5E-03) { 'unpredictable' } else { status }
-  
+
   return(status)
 }
 
@@ -98,10 +99,10 @@ is_expressed <- function(pseudobulks) {
 file.copy('../../preprocess/generate_single_cell_data/lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds', 'lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds')
 expression_model.lm <- readRDS('lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds')
 file.remove('lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds')
-cutoff.int <- mean(expression_model.lm$xy.df$y[1:7]) 
+cutoff.int <- mean(expression_model.lm$xy.df$y[1:7])
 
 compute_threshold <- function(ncells) {
-  
+
   s <-
     stats::predict(
       expression_model.lm$model2.lm,
@@ -109,9 +110,9 @@ compute_threshold <- function(ncells) {
       se.fit = TRUE,
       level = 0.95,
       interval = "confidence")$fit[,'fit']
-  
+
   return(s)
-  
+
 }
 
 attributes(alldata)$thresholds = sapply(attributes(alldata)$clustersize,compute_threshold)

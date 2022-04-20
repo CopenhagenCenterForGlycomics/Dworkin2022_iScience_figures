@@ -23,7 +23,7 @@ tcga_tissue_sample_counts <- tcga_tissue_sample_counts[order(tcga_tissue_sample_
 ```{r}
 writexl::write_xlsx(
   x = list(
-    GTeX = gtex_tissue_sample_counts, 
+    GTeX = gtex_tissue_sample_counts,
     TCGA = tcga_tissue_sample_counts),
   path = 'SupplementaryTable1.xlsx')
 ```

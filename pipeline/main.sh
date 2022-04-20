@@ -1,20 +1,20 @@
 #!/bin/bash
 
 ## downloading ##
+# downloading scp input data
+# bash /usr/local/bin/download_scp.sh
+
 # downloading panglaodb input data
-bash /usr/local/bin/download_panglaodb.sh
+# bash /usr/local/bin/download_panglaodb.sh
 
 # downloading tabuladb input data
-bash /usr/local/bin/download_tabuladb.sh
+# bash /usr/local/bin/download_tabuladb.sh
 
 # downloading gtex input data
 bash /usr/local/bin/download_gtex.sh
 
 # downloading tcga input data
 bash /usr/local/bin/download_tcga.sh
-
-# downloading scp input data
-bash /usr/local/bin/download_scp.sh
 
 ## preprocessing ##
 # pre-processing human data from tabuladb

@@ -1,5 +1,7 @@
 
-```{r}
+# loading libraries
+
+```{r libraries}
 library(edgeR)
 library(compositions)
 library(recount)
@@ -11,15 +13,21 @@ library(readxl)
 library(colorspace)
 ```
 
-```{r}
+# loading glycogenes
+
+```{r glycogene_ids}
 glycogene_lookup=readRDS('glycogene_lookup.Rds')
 ```
 
-```{r}
+# loading housekeeping genes
+
+```{r housekeeping_ids}
 seg_lookup = readRDS('seg_lookup.Rds')
 ```
 
-```{r}
+# using DPAGT1 as reference gene in bulk transforms
+
+```{r dpagt1_ref_gene}
 # 7e8fb4c9b050a8d9e100d038629a0467a3a9c805
 readTissueData_DPAGT1 = function(rse_gene,tissue,samples) {
 
@@ -27,7 +35,7 @@ readTissueData_DPAGT1 = function(rse_gene,tissue,samples) {
 
   y = DGEList(counts=mtx,group=rep('X',ncol(mtx)))
   y = calcNormFactors(y)
-  
+
   count_clr = apply(cpm(y),2,compositions::clr)
   rownames(count_clr) = stringr::str_replace(rownames(count_clr),'\\..*$','')
   glycogenes = count_clr[intersect(rownames(count_clr),glycogene_lookup),]
@@ -50,7 +58,9 @@ readTissueData_DPAGT1 = function(rse_gene,tissue,samples) {
 }
 ```
 
-```{r}
+# using each housekeeping gene in bulk transforms
+
+```{r per_ref_gene}
 # 4a3fee9b7b7d552846666cfbe113d124be7d6c5b
 readTissueData_perHouseKeepingGene = function(rse_gene,tissue,samples) {
 
@@ -62,23 +72,23 @@ readTissueData_perHouseKeepingGene = function(rse_gene,tissue,samples) {
   # Apply the clr to smooth out the data a bit
   count_clr = apply(cpm(y),2,compositions::clr)
   rownames(count_clr) = stringr::str_replace(rownames(count_clr),'\\..*$','')
-  
+
   gene_lookup = c(glycogene_lookup, seg_lookup)
   genes = count_clr[intersect(rownames(count_clr), gene_lookup),]
   reverse_genes = setNames(names(gene_lookup), gene_lookup)
   rownames(genes) = reverse_genes[rownames(genes)]
   # We want to collect the mean clr, sd of the clr, IQR of the clr
-  # This will give us the sets of fold-changes for genes that we expect to 
+  # This will give us the sets of fold-changes for genes that we expect to
   # see within normal tissue function -> Envelope for cell-level change
-  
+
   ref = genes[intersect(rownames(genes), c('DPAGT1', names(seg_lookup))),]
   glycogenes <- genes[intersect(rownames(genes), names(glycogene_lookup)),]
   genenames = rownames(glycogenes)
 
-  stats = 
-    do.call(rbind, mapply(
-      function(ref_row, ref_gene) { 
-        data <- 
+  stats =
+    mapply(
+      function(ref_row, ref_gene) {
+        data <-
           as.data.frame(t(apply(glycogenes, 1, function(row) {
             c(mean=mean(row),
               rel_mean=mean(row/ref_row),
@@ -91,14 +101,18 @@ readTissueData_perHouseKeepingGene = function(rse_gene,tissue,samples) {
       },
       split(ref, rownames(ref)),
       names(split(ref, rownames(ref))),
-      SIMPLIFY = F))
-  
+      SIMPLIFY = F)
+
+  stats = do.call(rbind, stats)
+
   stats
 
 }
 ```
 
-```{r}
+# using all housekeeping genes in bulk transform
+
+```{r all_ref_genes}
 readTissueData = function(rse_gene,tissue,samples) {
 
   mtx = assay(rse_gene)[,samples]
@@ -154,79 +168,93 @@ readTissueData = function(rse_gene,tissue,samples) {
 }
 ```
 
-<!-- # ```{r} -->
-<!-- # load('../../input/tcga/rse_gene_tcga.Rdata') -->
-<!-- #  -->
-<!-- # coldata = subset(colData(rse_gene),gdc_cases.samples.sample_type == 'Solid Tissue Normal') -->
-<!-- #  -->
-<!-- # # Group by tissue -->
-<!-- # all_tissues = unique(coldata[,'gdc_cases.project.primary_site']) -->
-<!-- # ``` -->
-<!-- #  -->
-<!-- # ```{r} -->
-<!-- # tissue_results_tcga_DPAGT1 = lapply(all_tissues, function(tissue) { -->
-<!-- #   samples = rownames(subset(coldata, gdc_cases.project.primary_site == tissue)) -->
-<!-- #   if (length(samples) > 1) { -->
-<!-- #     readTissueData(rse_gene,tissue,samples) -->
-<!-- #   } else { -->
-<!-- #     return() -->
-<!-- #   } -->
-<!-- # }) -->
-<!-- #  -->
-<!-- # tissue_results_tcga_DPAGT1 = do.call(rbind, tissue_results_tcga_DPAGT1) -->
-<!-- #  -->
-<!-- # saveRDS(tissue_results_tcga_DPAGT1,file = 'tissue_results_log_tcga_DPAGT1.Rds') -->
-<!-- # remove(tissue_results_tcga_DPAGT1) -->
-<!-- # ``` -->
-<!-- #  -->
-<!-- # ```{r} -->
-<!-- # tissue_results_tcga_perHouseKeepingGene = lapply(all_tissues, function(tissue) { -->
-<!-- #   samples = rownames(subset(coldata, gdc_cases.project.primary_site == tissue)) -->
-<!-- #   if (length(samples) > 1) { -->
-<!-- #     readTissueData(rse_gene,tissue,samples) -->
-<!-- #   } else { -->
-<!-- #     return() -->
-<!-- #   } -->
-<!-- # }) -->
-<!-- #  -->
-<!-- # tissue_results_tcga_perHouseKeepingGene = do.call(rbind, tissue_results_tcga_perHouseKeepingGene) -->
-<!-- #  -->
-<!-- # saveRDS(tissue_results_tcga_perHouseKeepingGene,file = 'tissue_results_log_tcga_perHouseKeepingGene.Rds') -->
-<!-- # remove(tissue_results_tcga_perHouseKeepingGene) -->
-<!-- # ``` -->
-<!-- #  -->
-<!-- # ```{r} -->
-<!-- # tissue_results_tcga = lapply(all_tissues, function(tissue) { -->
-<!-- #   samples = rownames(subset(coldata, gdc_cases.project.primary_site == tissue)) -->
-<!-- #   if (length(samples) > 1) { -->
-<!-- #     readTissueData(rse_gene,tissue,samples) -->
-<!-- #   } else { -->
-<!-- #     return() -->
-<!-- #   } -->
-<!-- # }) -->
-<!-- #  -->
-<!-- # tissue_results_tcga = do.call(rbind, tissue_results_tcga) -->
-<!-- #  -->
-<!-- # saveRDS(tissue_results_tcga,file = 'tissue_results_log_tcga.Rds') -->
-<!-- # remove(tissue_results_tcga) -->
-<!-- # ``` -->
-<!-- #  -->
-<!-- # ```{r} -->
-<!-- # remove(rse_gene) -->
-<!-- # ``` -->
+# loading recount2 tcga 
 
-```{r}
+```{r load_tcga}
+load('../../input/tcga/rse_gene_tcga.Rdata')
+
+coldata = subset(colData(rse_gene),gdc_cases.samples.sample_type == 'Solid Tissue Normal')
+
+# Group by tissue
+all_tissues = unique(coldata[,'gdc_cases.project.primary_site'])
+```
+
+## tcga stats using dpagt1 as ref
+
+```{r compute_tcga1}
+tissue_results_tcga_DPAGT1 = lapply(all_tissues, function(tissue) {
+  samples = rownames(subset(coldata, gdc_cases.project.primary_site == tissue))
+  if (length(samples) > 1) {
+    readTissueData_DPAGT1(rse_gene,tissue,samples)
+  } else {
+    return()
+  }
+})
+
+tissue_results_tcga_DPAGT1 = do.call(rbind, tissue_results_tcga_DPAGT1)
+
+saveRDS(tissue_results_tcga_DPAGT1,file = 'tissue_results_log_tcga_DPAGT1.Rds')
+remove(tissue_results_tcga_DPAGT1)
+```
+
+## tcga stats using each housekeeping gene as ref
+
+```{r compute_tcga2}
+tissue_results_tcga_perHouseKeepingGene = lapply(all_tissues, function(tissue) {
+  samples = rownames(subset(coldata, gdc_cases.project.primary_site == tissue))
+  if (length(samples) > 1) {
+    readTissueData_perHouseKeepingGene(rse_gene,tissue,samples)
+  } else {
+    return()
+  }
+})
+
+tissue_results_tcga_perHouseKeepingGene = do.call(rbind, tissue_results_tcga_perHouseKeepingGene)
+
+saveRDS(tissue_results_tcga_perHouseKeepingGene,file = 'tissue_results_log_tcga_perHouseKeepingGene.Rds')
+remove(tissue_results_tcga_perHouseKeepingGene)
+```
+
+## tcga stats using all housekeeping gene as ref
+
+```{r compute_tcga3}
+tissue_results_tcga = lapply(all_tissues, function(tissue) {
+  samples = rownames(subset(coldata, gdc_cases.project.primary_site == tissue))
+  if (length(samples) > 1) {
+    readTissueData(rse_gene,tissue,samples)
+  } else {
+    return()
+  }
+})
+
+tissue_results_tcga = do.call(rbind, tissue_results_tcga)
+
+saveRDS(tissue_results_tcga,file = 'tissue_results_log_tcga.Rds')
+remove(tissue_results_tcga)
+```
+
+# removing tcga
+
+```{r remove_tcga}
+remove(rse_gene)
+```
+
+# loading gtex
+
+```{r load_gtex}
 load('../../input/gtex/rse_gene_gtex.Rdata')
 
 # Group by tissue
 all_tissues = unique(colData(rse_gene)[,'smts'])
 ```
 
-```{r}
+## gtex stats using dpagt1 as ref
+
+```{r compute_gtex1}
 tissue_results_DPAGT1 = lapply(all_tissues, function(tissue) {
   message(tissue)
   samples = rownames(subset(colData(rse_gene),smts == tissue))
-  readTissueData(rse_gene,tissue,samples)
+  readTissueData_DPAGT1(rse_gene,tissue,samples)
 })
 
 tissue_results_DPAGT1 = do.call(rbind, tissue_results_DPAGT1)
@@ -235,21 +263,24 @@ saveRDS(tissue_results_DPAGT1,file = 'tissue_results_log_DPAGT1.Rds')
 remove(tissue_results_DPAGT1)
 ```
 
-```{r}
+## gtex stats using each housekeeping gene as ref
+
+```{r compute_gtex2}
 tissue_results_perHouseKeepingGene = lapply(all_tissues, function(tissue) {
   message(tissue)
   samples = rownames(subset(colData(rse_gene),smts == tissue))
-  readTissueData(rse_gene,tissue,samples)
+  readTissueData_perHouseKeepingGene(rse_gene,tissue,samples)
 })
 
-# TODO double check if correct
 tissue_results_perHouseKeepingGene = do.call(rbind, tissue_results_perHouseKeepingGene)
 
 saveRDS(tissue_results_perHouseKeepingGene,file = 'tissue_results_log_perHouseKeepingGene.Rds')
 remove(tissue_results_perHouseKeepingGene)
 ```
 
-```{r}
+## gtex stats using all housekeeping gene as ref
+
+```{r compute_gtex3}
 tissue_results = lapply(all_tissues, function(tissue) {
   message(tissue)
   samples = rownames(subset(colData(rse_gene),smts == tissue))
@@ -262,6 +293,8 @@ saveRDS(tissue_results,file = 'tissue_results_log.Rds')
 remove(tissue_result)
 ```
 
-```{r}
+# removing gtex
+
+```{r remove_gtex}
 remove(rse_gene)
 ```

@@ -1,5 +1,7 @@
 
-```{r}
+# reading in human pseudobulk Rds files
+
+```{r load_human_rds}
 if(!file.exists("alldata_human.Rds")){
   rds = list.files(path = '../hsap_samples_tabuladb/', pattern = '.Rds.gz', recursive = T)
   raw_alldata = sapply(paste('../hsap_samples_tabuladb/', rds, sep = ''), function(x) { 
@@ -11,7 +13,9 @@ if(!file.exists("alldata_human.Rds")){
 }
 ```
 
-```{r}
+# relabing human clusters
+
+```{r relabel_human_rds}
 if ('raw_alldata' %in% ls()) {
 fixed = sapply(1:length(raw_alldata),function(x) {
   srs_names = sapply( sapply(rds,strsplit,'_'), function(x) grep('^SR',x,value=T) ,simplify = F)
@@ -25,7 +29,7 @@ fixed = sapply(1:length(raw_alldata),function(x) {
   } else {
     newids = paste(tissue,newids,sep=':')
   }
-  
+
   newids = paste(ifelse(attributes(raw_alldata[[x]])$clustersize < 200, 'SMALL_','' ),newids,sep='')
   dimnames(raw_alldata[[x]]) <- list(newids, dimnames(raw_alldata[[x]])[[2]])
   attributes(raw_alldata[[x]])$sizes <- setNames(attributes(raw_alldata[[x]])$clustersize,rownames(raw_alldata[[x]]))
@@ -34,7 +38,9 @@ fixed = sapply(1:length(raw_alldata),function(x) {
 }
 ```
 
-```{r}
+# concatenating Rds files
+
+```{r concat_human_rds}
 if ('fixed' %in% ls()) {
   alldata = do.call(function(...) {
     tmp <- plyr::rbind.fill.matrix(...)

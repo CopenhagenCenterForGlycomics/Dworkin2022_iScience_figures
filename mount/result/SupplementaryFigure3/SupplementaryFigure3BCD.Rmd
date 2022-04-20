@@ -1,5 +1,5 @@
 
-```{r include=FALSE}
+```{r}
 library(ggplot2)
 library(ggrepel)
 library(dplyr)
@@ -51,47 +51,47 @@ Either using pseudobulks and bulk TPMs passing cutoff, or using all pseudobulks 
 ```{r}
 sc_data.df = bind_rows(
   filter(.data = pseudobulk_rel_diff, source == 'human' & rel_diff > median_cutoff) %>%
-    select(gene, rel_diff) %>% 
-    group_by(gene) %>% 
+    select(gene, rel_diff) %>%
+    group_by(gene) %>%
     summarize(`iqr(rel_diff)` = iqr(rel_diff), `median(rel_diff)` = median(rel_diff), `mean(rel_diff)` = mean(rel_diff), num_cluster = n()) %>%
     mutate(cutoff = 'applied'),
   filter(.data = pseudobulk_rel_diff, source == 'human') %>%
-    select(gene, rel_diff) %>% 
-    group_by(gene) %>% 
+    select(gene, rel_diff) %>%
+    group_by(gene) %>%
     summarize(`iqr(rel_diff)` = iqr(rel_diff), `median(rel_diff)` = median(rel_diff), `mean(rel_diff)` = mean(rel_diff), num_cluster = n()) %>%
     mutate(cutoff = 'unapplied'))
 ```
 
 ```{r}
 bulk_data.df = bind_rows(
-  filter(.data = tissue_results_all, ref_gene == 'all' & samples > 10 & log_cpm > log(2)) %>% 
-    select(gene, rel_diff) %>% 
-    group_by(gene) %>% 
+  filter(.data = tissue_results_all, ref_gene == 'all' & samples > 10 & log_cpm > log(2)) %>%
+    select(gene, rel_diff) %>%
+    group_by(gene) %>%
     summarize(`iqr(rel_diff)` = iqr(rel_diff), `median(rel_diff)` = median(rel_diff), `mean(rel_diff)` = mean(rel_diff)) %>%
     mutate(dataset = 'all', cutoff = 'applied'),
   filter(.data = tissue_results_all, ref_gene == 'all' & source == 'gtex' & samples > 10 & log_cpm > log(2)) %>%
-    select(gene, rel_diff) %>% 
+    select(gene, rel_diff) %>%
     group_by(gene) %>%
     summarize(`iqr(rel_diff)` = iqr(rel_diff), `median(rel_diff)` = median(rel_diff), `mean(rel_diff)` = mean(rel_diff)) %>%
     mutate(dataset = 'gtex', cutoff = 'applied'),
   filter(.data = tissue_results_all, ref_gene == 'all' & source == 'tcga' & samples > 10 & log_cpm > log(2)) %>%
     select(gene, rel_diff) %>%
-    group_by(gene) %>% 
+    group_by(gene) %>%
     summarize(`iqr(rel_diff)` = iqr(rel_diff), `median(rel_diff)` = median(rel_diff), `mean(rel_diff)` = mean(rel_diff)) %>%
     mutate(dataset = 'tcga', cutoff = 'applied'),
   filter(.data = tissue_results_all, ref_gene == 'all' & samples > 10 & log_cpm > log(1.05)) %>%
-    select(gene, rel_diff) %>% 
-    group_by(gene) %>% 
+    select(gene, rel_diff) %>%
+    group_by(gene) %>%
     summarize(`iqr(rel_diff)` = iqr(rel_diff), `median(rel_diff)` = median(rel_diff), `mean(rel_diff)` = mean(rel_diff)) %>%
     mutate(dataset = 'all', cutoff = 'unapplied'),
-  filter(.data = tissue_results_all, ref_gene == 'all' & source == 'gtex' & samples > 10 & log_cpm > log(1.05)) %>% 
-    select(gene, rel_diff) %>% 
+  filter(.data = tissue_results_all, ref_gene == 'all' & source == 'gtex' & samples > 10 & log_cpm > log(1.05)) %>%
+    select(gene, rel_diff) %>%
     group_by(gene) %>%
     summarize(`iqr(rel_diff)` = iqr(rel_diff), `median(rel_diff)` = median(rel_diff), `mean(rel_diff)` = mean(rel_diff)) %>%
     mutate(dataset = 'gtex', cutoff = 'unapplied'),
-  filter(.data = tissue_results_all, ref_gene == 'all' & source == 'tcga' & samples > 10 & log_cpm > log(1.05)) %>% 
+  filter(.data = tissue_results_all, ref_gene == 'all' & source == 'tcga' & samples > 10 & log_cpm > log(1.05)) %>%
     select(gene, rel_diff) %>%
-    group_by(gene) %>% 
+    group_by(gene) %>%
     summarize(`iqr(rel_diff)` = iqr(rel_diff), `median(rel_diff)` = median(rel_diff), `mean(rel_diff)` = mean(rel_diff)) %>%
     mutate(dataset = 'tcga', cutoff = 'unapplied'))
 ```
@@ -108,22 +108,22 @@ plot_data.df = bind_rows(
 
 ```{r}
 scatterplotter <- function(data.df, x.char, y.char, bulk_data.char, xlims, ylims) {
-  
-  cutoff_unapplied.df <- filter(.data = data.df, cutoff == 'unapplied' & dataset == bulk_data.char) 
+
+  cutoff_unapplied.df <- filter(.data = data.df, cutoff == 'unapplied' & dataset == bulk_data.char)
   cutoff_applied.df <- filter(.data = data.df, cutoff == 'applied' & dataset == bulk_data.char)
-  
+
   # xlims = range(c(cutoff_unapplied.df[x.char], cutoff_applied.df[x.char]))
   # xlims = c(floor(xlims[1]), ceiling(xlims[2]))
   # ylims = range(c(cutoff_unapplied.df[y.char], cutoff_applied.df[y.char]))
   # ylims = c(floor(ylims[1]), ceiling(ylims[2]))
-  
-  ggplot_unapplied.obj <- 
+
+  ggplot_unapplied.obj <-
     ggplot() +
       geom_point(
-        data = cutoff_unapplied.df, 
+        data = cutoff_unapplied.df,
         aes_string(x = as.name(x.char), y = as.name(y.char), color = 'num_cluster'), alpha = 0.5) +
       scale_color_gradientn(colours = colorRampPalette(c('red','orange'))(12)) +
-      scale_x_continuous(breaks = seq(xlims[1], xlims[2], 1), limits = xlims) + 
+      scale_x_continuous(breaks = seq(xlims[1], xlims[2], 1), limits = xlims) +
       scale_y_continuous(breaks = seq(ylims[1], ylims[2], 1), limits = ylims) +
       labs(color = 'all\nclusters') +
       theme_minimal() +
@@ -131,14 +131,14 @@ scatterplotter <- function(data.df, x.char, y.char, bulk_data.char, xlims, ylims
         legend.position = 'right',
         axis.title.x.bottom = element_blank(),
         axis.title.y.left = element_blank())
-  
-  ggplot_applied.obj <- 
+
+  ggplot_applied.obj <-
     ggplot() +
       geom_point(
-        data = cutoff_applied.df, 
+        data = cutoff_applied.df,
         aes_string(x = as.name(x.char), y = as.name(y.char), color = 'num_cluster')) +
       scale_color_gradientn(colours = colorRampPalette(c('darkblue','lightblue'))(12)) +
-      scale_x_continuous(breaks = seq(xlims[1], xlims[2], 1), limits = xlims) + 
+      scale_x_continuous(breaks = seq(xlims[1], xlims[2], 1), limits = xlims) +
       scale_y_continuous(breaks = seq(ylims[1], ylims[2], 1), limits = ylims) +
       labs(color = 'clusters\npassing\ncutoff') +
       theme_minimal() +
@@ -154,26 +154,26 @@ scatterplotter <- function(data.df, x.char, y.char, bulk_data.char, xlims, ylims
     y = cutoff_applied.df[,c(y.char)][[1]],
     method = 'pearson',
     alternative = 'two.sided')
-    
+
   aligned_plots <- align_plots(
     ggplot_unapplied.obj + theme(legend.position = 'none'),
     ggplot_applied.obj + theme(legend.position = 'none'),
     ggplot() +
       geom_text(
-        data = cutoff_applied.df, 
-        aes(label = paste0('r = ', round(cor.obj$estimate, 2), '; p = ', signif(cor.obj$p.value, 3)), x = Inf, y = Inf), 
+        data = cutoff_applied.df,
+        aes(label = paste0('r = ', round(cor.obj$estimate, 2), '; p = ', signif(cor.obj$p.value, 3)), x = Inf, y = Inf),
         color = 'black', vjust = 'inward', hjust = 'inward') +
-      geom_abline(slope = 1, intercept = 0) + 
-      scale_x_continuous(breaks = seq(xlims[1], xlims[2], 1), limits = xlims) + 
+      geom_abline(slope = 1, intercept = 0) +
+      scale_x_continuous(breaks = seq(xlims[1], xlims[2], 1), limits = xlims) +
       scale_y_continuous(breaks = seq(ylims[1], ylims[2], 1), limits = ylims) +
       xlab(paste('sc', gsub('x', '', x.char))) +
       ylab(paste('bulk', gsub('y', '', y.char))) +
       theme_minimal() +
       theme(legend.position = 'none'),
     align="hv", axis="tblr")
-  
+
   ggplot.obj <- ggdraw(aligned_plots[[1]]) + draw_plot(aligned_plots[[2]]) + draw_plot(aligned_plots[[3]])
-  
+
   result.list <- list(
     ggplot.obj,
     legend_unapplied,
@@ -187,7 +187,7 @@ scatterplotter <- function(data.df, x.char, y.char, bulk_data.char, xlims, ylims
 ggpubr::annotate_figure(
   right = gridExtra::arrangeGrob(
     scatterplotter(data.df = plot_data.df, x.char = 'mean(rel_diff).x', y.char = 'mean(rel_diff).y', bulk_data.char = 'all',c(-10,0),c(-5,2))[[2]],
-    scatterplotter(data.df = plot_data.df, x.char = 'mean(rel_diff).x', y.char = 'mean(rel_diff).y', bulk_data.char = 'all',c(-10,0),c(-5,2))[[3]], 
+    scatterplotter(data.df = plot_data.df, x.char = 'mean(rel_diff).x', y.char = 'mean(rel_diff).y', bulk_data.char = 'all',c(-10,0),c(-5,2))[[3]],
     nrow = 2, ncol = 1),
   ggpubr::ggarrange(
     plotlist = list(
@@ -203,7 +203,7 @@ ggpubr::annotate_figure(
 ggpubr::annotate_figure(
   right = gridExtra::arrangeGrob(
     scatterplotter(data.df = plot_data.df, x.char = 'iqr(rel_diff).x', y.char = 'iqr(rel_diff).y', bulk_data.char = 'all', c(0,5),c(0,4))[[2]],
-    scatterplotter(data.df = plot_data.df, x.char = 'iqr(rel_diff).x', y.char = 'iqr(rel_diff).y', bulk_data.char = 'all', c(0,5),c(0,4))[[3]], 
+    scatterplotter(data.df = plot_data.df, x.char = 'iqr(rel_diff).x', y.char = 'iqr(rel_diff).y', bulk_data.char = 'all', c(0,5),c(0,4))[[3]],
     nrow = 2, ncol = 1),
   ggpubr::ggarrange(
     plotlist = list(
@@ -216,24 +216,24 @@ ggpubr::annotate_figure(
 # tossing genes into buckets delimited by bulk iqr order for each bulk dataset subset
 
 ```{r}
-human_filtered_sc_bulk  <- 
-  filter(.data = plot_data.df, cutoff == 'applied' & dataset == 'all')  %>% 
+human_filtered_sc_bulk  <-
+  filter(.data = plot_data.df, cutoff == 'applied' & dataset == 'all')  %>%
   arrange(`iqr(rel_diff).y`) %>%
   mutate(bulk_iqr = cut.default(`iqr(rel_diff).y`, c(seq(0, 2, by = 0.5), 4))) %>%
   mutate(xpos = as.numeric(bulk_iqr))
 ```
 
 ```{r}
-human_filtered_sc_gtex <- 
-  filter(.data = plot_data.df, cutoff == 'applied' & dataset == 'gtex') %>% 
+human_filtered_sc_gtex <-
+  filter(.data = plot_data.df, cutoff == 'applied' & dataset == 'gtex') %>%
   arrange(`iqr(rel_diff).y`) %>%
   mutate(bulk_iqr = cut.default(`iqr(rel_diff).y`, c(seq(0, 2, by = 0.5), 4))) %>%
   mutate(xpos = as.numeric(bulk_iqr))
 ```
 
 ```{r}
-human_filtered_sc_tcga <- 
-  filter(.data = plot_data.df, cutoff == 'applied' & dataset == 'tcga') %>% 
+human_filtered_sc_tcga <-
+  filter(.data = plot_data.df, cutoff == 'applied' & dataset == 'tcga') %>%
   arrange(`iqr(rel_diff).y`) %>%
   mutate(bulk_iqr = cut.default(`iqr(rel_diff).y`, c(seq(0, 2, by = 0.5), 4))) %>%
   mutate(xpos = as.numeric(bulk_iqr))
@@ -245,7 +245,7 @@ human_filtered_sc_tcga <-
 bulk_iqr_all_bulk.df  <-
   group_by(human_filtered_sc_bulk, bulk_iqr) %>%
   summarize(
-    xpos = unique(xpos), 
+    xpos = unique(xpos),
     cor = cor.test(`iqr(rel_diff).x`, `iqr(rel_diff).y`, method = 'pearson', alternative = 'two.sided')$estimate,
     pvalue = cor.test(`iqr(rel_diff).x`, `iqr(rel_diff).y`, method = 'pearson', alternative = 'two.sided')$p.value) %>%
   mutate(source = 'all')
@@ -255,7 +255,7 @@ bulk_iqr_all_bulk.df  <-
 bulk_iqr_only_gtex.df <-
   group_by(human_filtered_sc_gtex, bulk_iqr) %>%
   summarize(
-    xpos = unique(xpos), 
+    xpos = unique(xpos),
     cor = cor.test(`iqr(rel_diff).x`, `iqr(rel_diff).y`, method = 'pearson', alternative = 'two.sided')$estimate,
     pvalue = cor.test(`iqr(rel_diff).x`, `iqr(rel_diff).y`, method = 'pearson', alternative = 'two.sided')$p.value) %>%
   mutate(source = 'gtex')
@@ -265,7 +265,7 @@ bulk_iqr_only_gtex.df <-
 bulk_iqr_only_tcga.df <-
   group_by(human_filtered_sc_tcga, bulk_iqr) %>%
   summarize(
-    xpos = unique(xpos), 
+    xpos = unique(xpos),
     cor = cor.test(`iqr(rel_diff).x`, `iqr(rel_diff).y`, method = 'pearson', alternative = 'two.sided')$estimate,
     pvalue = cor.test(`iqr(rel_diff).x`, `iqr(rel_diff).y`, method = 'pearson', alternative = 'two.sided')$p.value) %>%
   mutate(source = 'tcga')
@@ -274,8 +274,8 @@ bulk_iqr_only_tcga.df <-
 # SupplementaryFigure3D
 
 ```{r}
-bulk_iqr_ordered.ggplot <- 
-  bind_rows(bulk_iqr_all_bulk.df, bulk_iqr_only_gtex.df, bulk_iqr_only_tcga.df) %>% 
+bulk_iqr_ordered.ggplot <-
+  bind_rows(bulk_iqr_all_bulk.df, bulk_iqr_only_gtex.df, bulk_iqr_only_tcga.df) %>%
   ggplot(aes(x = xpos, y = cor, color = source)) +
   geom_point() +
   scale_x_continuous(

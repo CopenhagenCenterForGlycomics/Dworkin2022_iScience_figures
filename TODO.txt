@@ -1,15 +1,4 @@
 # troubleshoot
 download_tabuladb.sh
-download_panglaodb.sh # <-- requires input from Hiren
-download_scp.sh # <-- requires input from Hiren
-
-# test
-preprocess_pipeline_scp.sh
-reshape_data.sh
-generate_main_figures.sh
-generate_supplementary_figures.sh
-generate_supplementary_tables.sh
-
-# fix
-SupplementaryFigure6 # <-- requires two new Rds generated in preprocess/
-SupplementaryTable2 # <-- need to recreate!
+download_panglaodb.sh
+download_scp.sh

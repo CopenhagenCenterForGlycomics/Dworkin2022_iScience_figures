@@ -1,5 +1,7 @@
 
-```{r}
+# reading in mouse pseudobulk Rds files
+
+```{r load_mouse_rds}
 if(!file.exists("alldata_mouse.Rds")){
   rds = list.files(path = '../mmus_samples_panglaodb/', pattern = '.Rds.gz', recursive = T)
   raw_alldata = sapply(paste('../mmus_samples_panglaodb/', rds, sep = ''), function(x) { 
@@ -11,7 +13,9 @@ if(!file.exists("alldata_mouse.Rds")){
 }
 ```
 
-```{r}
+# relabing mouse clusters
+
+```{r relabel_mouse_rds}
 if ('raw_alldata' %in% ls()) {
 fixed = sapply(1:length(raw_alldata),function(x) {
   srs_names = sapply( sapply(rds,strsplit,'_'), function(x) grep('^SR',x,value=T) ,simplify = F)
@@ -28,7 +32,9 @@ fixed = sapply(1:length(raw_alldata),function(x) {
 }
 ```
 
-```{r}
+# concatenating Rds files
+
+```{r concat_mouse_rds}
 if ('fixed' %in% ls()) {
   alldata = do.call(function(...) {
     tmp <- plyr::rbind.fill.matrix(...)

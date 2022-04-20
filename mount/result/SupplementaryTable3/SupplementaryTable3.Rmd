@@ -54,11 +54,11 @@ compute_pseudopresence_pvalue <- function(pseudobulk, mu, s, n) {
 
 file.copy('../../preprocess/generate_single_cell_data/lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds', 'lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds')
 expression_model.lm <- readRDS('lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds')
-cutoff.int <- mean(expression_model.lm$xy.df$y[1:7]) 
+cutoff.int <- mean(expression_model.lm$xy.df$y[1:7])
 file.remove('lm_chromium10x_mupb_norm_nziqr_threshold_cutoff.Rds')
 
 compute_threshold <- function(ncells) {
-  
+
   s <-
     stats::predict(
       expression_model.lm$model2.lm,
@@ -66,21 +66,21 @@ compute_threshold <- function(ncells) {
       se.fit = TRUE,
       level = 0.95,
       interval = "confidence")$fit[,'fit']
-  
+
   return(s)
-  
+
 }
 ```
 
 ```{r include=FALSE}
 compute_expression_pvalue <- function(pseudobulk, threshold) {
-  
+
   n   <- 7 # chosen based on the number of pseudobulk sizes that model is fit to
-  ts  <- (cutoff.int - pseudobulk)/(threshold/sqrt(n)) 
+  ts  <- (cutoff.int - pseudobulk)/(threshold/sqrt(n))
   p   <- 2*pt(-abs(ts), n-1)
-  
+
   return(p)
-  
+
 }
 ```
 
@@ -89,13 +89,13 @@ compute_expression_pvalue <- function(pseudobulk, threshold) {
 ```{r}
 
 compute_intersects <- function(test_data, reference_data) {
-  
+
   rownames(reference_data) <- reference_data$gene
   reference_data$gene <- NULL
-  
+
   rownames(test_data) <- test_data$gene
   test_data$gene <- NULL
-  
+
   reference_data <- as.matrix(reference_data)
 
   ## ensuring genes of reference_data and test_data are in order ----
@@ -103,10 +103,10 @@ compute_intersects <- function(test_data, reference_data) {
     sort(unique(c(
       rownames(test_data),
       rownames(reference_data))))
-  
+
   test_data <- test_data[ordering,]
   reference_data <- reference_data[ordering,]
-  
+
   ## computing value for specified quantile cutoffs on reference_data
   expression_quantiles <- apply(
     reference_data, 1,
@@ -114,7 +114,7 @@ compute_intersects <- function(test_data, reference_data) {
       # type 1 equivalent to inverse of ecdf function
       quantile(x, probs = seq(0,1,0.1), type = 1, na.rm = T)
     })
-  
+
   ## computing predicted expression for each gene at each cutoff ----
   predicted_expression <-
       mapply(
@@ -123,17 +123,17 @@ compute_intersects <- function(test_data, reference_data) {
         },
         data.frame(t(test_data)),
         data.frame(t(reference_data)))
-  
+
   rownames(predicted_expression) <- colnames(test_data)
   predicted_expression <- reshape2:::melt.matrix(
-    predicted_expression, 
-    varnames = c('subset','gene'), 
+    predicted_expression,
+    varnames = c('subset','gene'),
     value.name = 'percentile')
-          
+
   predicted_expression
-  
+
   list(predicted_expression = predicted_expression)
-  
+
 }
 
 ```
@@ -146,14 +146,14 @@ compute_ranges <- function(reference_data) {
 
   rownames(reference_data) <- reference_data$gene
   reference_data$gene <- NULL
-  
+
   reference_data <- as.matrix(reference_data)
 
   ## ensuring genes of reference_data and test_data are in order ----
   ordering <- sort(unique(rownames(reference_data)))
-  
+
   reference_data <- reference_data[ordering,]
-  
+
   ## computing value for specified quantile cutoffs on reference_data
   expression_quantiles <- apply(
     reference_data, 1,
@@ -161,9 +161,9 @@ compute_ranges <- function(reference_data) {
       # type 1 equivalent to inverse of ecdf function
       quantile(x, probs = seq(0,1,0.1), type = 1, na.rm = T)
     })
-  
+
   list(expression_quantiles = expression_quantiles)
-  
+
 }
 
 ```
@@ -288,7 +288,7 @@ remove(alldata_clean_human_clr_sparse.sm)
 
 ```{r}
 
-glycogene_human_clr.df <- 
+glycogene_human_clr.df <-
   setNames(
     subset(reshape2:::melt.matrix(glycogene_clean_human_clr_sparse.sm, as.is = T), value != 0),
     c('tissue','gene','clr'))
@@ -355,7 +355,7 @@ glycogene_human_pseudobulkpresence.df$tissue <- gsub('_cluster.*$', '', glycogen
 glycogene_human.df <- Reduce(
   merge,
   list(
-    glycogene_human_pseudobulkpresence.df, 
+    glycogene_human_pseudobulkpresence.df,
     glycogene_human_clr.df,
     glycogene_human_segnorm.df))
 
@@ -400,9 +400,9 @@ glycogene_human.df$pseudopresence.pred_sd <- with(
   round(pseudopresence.pred_sd, 2))
 
 glycogene_human.df <- tidyr::unite(
-  glycogene_human.df, 
-  'pseudopresence.expected', 
-  pseudopresence.pred_mu, 
+  glycogene_human.df,
+  'pseudopresence.expected',
+  pseudopresence.pred_mu,
   pseudopresence.pred_sd,
   sep = '+/-')
 
@@ -425,7 +425,7 @@ glycogene_human.df$gene_ortholog <- glycogene_human.df$gene
 ```{r}
 
 glycogene_human.df$pseudopresence.classification <- with(
-  glycogene_human.df, 
+  glycogene_human.df,
   ifelse(pseudopresence.pval > 1E-5, 'stable','unstable'))
 
 ```
@@ -449,12 +449,12 @@ glycogene_human.df <- merge(
   glycogene_human.df,
   compute_intersects(
     test_data = reshape2:::dcast(
-      test_data, 
-      gene ~ paste0(tissue,':',cell), 
+      test_data,
+      gene ~ paste0(tissue,':',cell),
       value.var = 'rel_diff'),
     reference_data = reshape2:::dcast(
-      reference_data, 
-      gene ~ paste0(tissue,':',cell), 
+      reference_data,
+      gene ~ paste0(tissue,':',cell),
       value.var = 'rel_diff'))$predicted_expression %>%
     tidyr::separate('subset', into = c('tissue', 'cell'), sep = ':') %>%
     dplyr::rename(sc_percentile=percentile),
@@ -467,7 +467,7 @@ glycogene_human.df <- merge(
 
 glycogene_human.df$sc_classification <- with(
   glycogene_human.df, cut.default(
-    sc_percentile, 
+    sc_percentile,
     breaks = seq(-0.1,1.1,0.1),
     labels = c(paste0('<',seq(0,100,10),'%'),'>100%')))
 
@@ -490,12 +490,12 @@ glycogene_human.df <- merge(
   glycogene_human.df,
   compute_intersects(
     test_data = reshape2:::dcast(
-      test_data, 
-      gene ~ paste0(tissue,':',cell), 
+      test_data,
+      gene ~ paste0(tissue,':',cell),
       value.var = 'rel_diff'),
     reference_data = reshape2:::dcast(
-      reference_data, 
-      gene ~ paste0(sample_id,':',tissue,':',source), 
+      reference_data,
+      gene ~ paste0(sample_id,':',tissue,':',source),
       value.var = 'rel_diff'))$predicted_expression %>%
     tidyr::separate('subset', into = c('tissue', 'cell'), sep = ':') %>%
     dplyr::rename(bulk_percentile=percentile),
@@ -508,7 +508,7 @@ glycogene_human.df <- merge(
 
 glycogene_human.df$bulk_classification <- with(
   glycogene_human.df, cut.default(
-    bulk_percentile, 
+    bulk_percentile,
     breaks = seq(-0.1,1.1,0.1),
     labels = c(paste0('<',seq(0,100,10),'%'),'>100%')))
 
@@ -524,8 +524,8 @@ glycogene_human_cell.df <-
   glycogene_human.df %>% group_by(gene, cell) %>% summarize(
     organism = unique(organism),
     gene_ortholog = unique(gene_ortholog),
-    clr = mean(clr), 
-    pseudobulk = mean(pseudobulk), 
+    clr = mean(clr),
+    pseudobulk = mean(pseudobulk),
     samples = sum(samples),
     pseudopresence = sum(pseudopresence),
     rel_diff = mean(rel_diff))
@@ -557,11 +557,11 @@ glycogene_human_cell.df$threshold <- NULL
 
 ```{r}
 glycogene_human_cell.df$`status5E-03` <- with(
-  glycogene_human_cell.df, 
+  glycogene_human_cell.df,
   addNA(factor(
     ifelse(
-      pvalue > 5E-03, 'unpredictable', 
-      ifelse(pseudobulk > cutoff.int, 'expressed', 'unexpressed')), 
+      pvalue > 5E-03, 'unpredictable',
+      ifelse(pseudobulk > cutoff.int, 'expressed', 'unexpressed')),
     levels = rev(c('unexpressed','unpredictable','expressed')))))
 ```
 
@@ -609,9 +609,9 @@ glycogene_human_cell.df$pseudopresence.pred_sd <- with(
   round(pseudopresence.pred_sd, 2))
 
 glycogene_human_cell.df <- tidyr::unite(
-  glycogene_human_cell.df, 
-  'pseudopresence.expected', 
-  pseudopresence.pred_mu, 
+  glycogene_human_cell.df,
+  'pseudopresence.expected',
+  pseudopresence.pred_mu,
   pseudopresence.pred_sd,
   sep = '+/-')
 
@@ -622,7 +622,7 @@ glycogene_human_cell.df <- tidyr::unite(
 ```{r}
 
 glycogene_human_cell.df$pseudopresence.classification <- with(
-  glycogene_human_cell.df, 
+  glycogene_human_cell.df,
   ifelse(pseudopresence.pval > 1E-5, 'stable','unstable'))
 
 ```
@@ -643,12 +643,12 @@ glycogene_human_cell.df <- merge(
   rename(
     compute_intersects(
       test_data = reshape2:::dcast(
-        test_data, 
-        gene ~ cell, 
+        test_data,
+        gene ~ cell,
         value.var = 'rel_diff'),
       reference_data = reshape2:::dcast(
-        reference_data, 
-        gene ~ cell, 
+        reference_data,
+        gene ~ cell,
         value.var = 'rel_diff'))$predicted_expression,
     cell=subset, sc_percentile=percentile),
   by = c('cell','gene'),
@@ -660,7 +660,7 @@ glycogene_human_cell.df <- merge(
 
 glycogene_human_cell.df$sc_classification <- with(
   glycogene_human_cell.df, cut.default(
-    sc_percentile, 
+    sc_percentile,
     breaks = seq(-0.1,1.1,0.1),
     labels = c(paste0('<',seq(0,100,10),'%'),'>100%')))
 
@@ -686,12 +686,12 @@ glycogene_human_cell.df <- merge(
   rename(
     compute_intersects(
       test_data = reshape2:::dcast(
-        test_data, 
-        gene ~ cell, 
+        test_data,
+        gene ~ cell,
         value.var = 'rel_diff'),
       reference_data = reshape2:::dcast(
-        bulk, 
-        gene ~ paste0(sample_id,':',tissue,':',source), 
+        bulk,
+        gene ~ paste0(sample_id,':',tissue,':',source),
         value.var = 'rel_diff'))$predicted_expression,
     cell=subset, bulk_percentile=percentile),
   by = c('cell','gene'),
@@ -703,7 +703,7 @@ glycogene_human_cell.df <- merge(
 
 glycogene_human_cell.df$bulk_classification <- with(
   glycogene_human_cell.df, cut.default(
-    bulk_percentile, 
+    bulk_percentile,
     breaks = seq(-0.1,1.1,0.1),
     labels = c(paste0('<',seq(0,100,10),'%'),'>100%')))
 
@@ -714,7 +714,7 @@ glycogene_human_cell.df$bulk_classification <- with(
 ```{r}
 
 glycogene_human.df <- dplyr::rename(
-  glycogene_human.df, 
+  glycogene_human.df,
   `gene ortholog` = gene_ortholog,
   `# of cells` = samples,
   `above cutoff` = above_cutoff,
@@ -735,7 +735,7 @@ glycogene_human.df <- dplyr::rename(
 ```{r}
 
 glycogene_human_cell.df <- dplyr::rename(
-  glycogene_human_cell.df, 
+  glycogene_human_cell.df,
   `gene ortholog` = gene_ortholog,
   `# of cells` = samples,
   `above cutoff` = above_cutoff,
@@ -785,7 +785,7 @@ glycogene_human.df <- dplyr::select(
 ```{r}
 
 glycogene_human_cell.df <- dplyr::select(
-  glycogene_human_cell.df, 
+  glycogene_human_cell.df,
   organism,
   cell,
   gene,
@@ -947,7 +947,7 @@ glycogene_mouse.df <- tidyr::separate(glycogene_mouse.df, 'cell', into = c('cell
 glycogene_mouse.df$SRS <- NULL
 glycogene_mouse.df$tsne <- NULL
 
-glycogene_mouse.df <- 
+glycogene_mouse.df <-
   group_by(glycogene_mouse.df, tissue, cell, gene) %>%
   summarise(
     samples = sum(samples),
@@ -956,15 +956,15 @@ glycogene_mouse.df <-
     rel_diff = mean(rel_diff))
 
 glycogene_mouse.df$pvalue <- with(
-  glycogene_mouse.df, 
+  glycogene_mouse.df,
   compute_expression_pvalue(pseudobulk, compute_threshold(samples)))
-                                  
+
 glycogene_mouse.df$`status5E-03` <- with(
-  glycogene_mouse.df, 
+  glycogene_mouse.df,
   addNA(factor(
     ifelse(
-      pvalue > 5E-03, 'unpredictable', 
-      ifelse(pseudobulk > cutoff.int, 'expressed', 'unexpressed')), 
+      pvalue > 5E-03, 'unpredictable',
+      ifelse(pseudobulk > cutoff.int, 'expressed', 'unexpressed')),
     levels = rev(c('unexpressed','unpredictable','expressed')))))
 
 glycogene_mouse.df$pseudopresence.pred_mu <- with(
@@ -1045,12 +1045,12 @@ glycogene_mouse_known.df <- merge(
   glycogene_mouse_known.df,
   compute_intersects(
     test_data = reshape2:::dcast(
-      test_data, 
-      gene ~ paste0(tissue,':',cell), 
+      test_data,
+      gene ~ paste0(tissue,':',cell),
       value.var = 'rel_diff'),
     reference_data = reshape2:::dcast(
-      reference_data, 
-      gene ~ paste0(tissue,':',cell), 
+      reference_data,
+      gene ~ paste0(tissue,':',cell),
       value.var = 'rel_diff'))$predicted_expression %>%
     tidyr::separate('subset', into = c('tissue', 'cell'), sep = ':') %>%
     dplyr::rename(sc_percentile=percentile),
@@ -1063,7 +1063,7 @@ glycogene_mouse_known.df <- merge(
 
 glycogene_mouse_known.df$sc_classification <- with(
   glycogene_mouse_known.df, cut.default(
-    sc_percentile, 
+    sc_percentile,
     breaks = seq(-0.1,1.1,0.1),
     labels = c(paste0('<',seq(0,100,10),'%'),'>100%')))
 
@@ -1086,12 +1086,12 @@ glycogene_mouse_known.df <- merge(
   glycogene_mouse_known.df,
   compute_intersects(
     test_data = reshape2:::dcast(
-      test_data, 
-      gene ~ paste0(tissue,':',cell), 
+      test_data,
+      gene ~ paste0(tissue,':',cell),
       value.var = 'rel_diff'),
     reference_data = reshape2:::dcast(
-      reference_data, 
-      gene ~ paste0(sample_id,':',tissue,':',source), 
+      reference_data,
+      gene ~ paste0(sample_id,':',tissue,':',source),
       value.var = 'rel_diff'))$predicted_expression %>%
     tidyr::separate('subset', into = c('tissue', 'cell'), sep = ':') %>%
     dplyr::rename(bulk_percentile=percentile),
@@ -1104,7 +1104,7 @@ glycogene_mouse_known.df <- merge(
 
 glycogene_mouse_known.df$bulk_classification <- with(
   glycogene_mouse_known.df, cut.default(
-    bulk_percentile, 
+    bulk_percentile,
     breaks = seq(-0.1,1.1,0.1),
     labels = c(paste0('<',seq(0,100,10),'%'),'>100%')))
 
@@ -1129,12 +1129,12 @@ glycogene_mouse_unknown.df <- merge(
   glycogene_mouse_unknown.df,
   compute_intersects(
     test_data = reshape2:::dcast(
-      test_data, 
-      gene ~ paste0(tissue,':',cell), 
+      test_data,
+      gene ~ paste0(tissue,':',cell),
       value.var = 'rel_diff'),
     reference_data = reshape2:::dcast(
-      reference_data, 
-      gene ~ paste0(tissue,':',cell), 
+      reference_data,
+      gene ~ paste0(tissue,':',cell),
       value.var = 'rel_diff'))$predicted_expression %>%
     tidyr::separate('subset', into = c('tissue', 'cell'), sep = ':') %>%
     dplyr::rename(sc_percentile=percentile),
@@ -1147,7 +1147,7 @@ glycogene_mouse_unknown.df <- merge(
 
 glycogene_mouse_unknown.df$sc_classification <- with(
   glycogene_mouse_unknown.df, cut.default(
-    sc_percentile, 
+    sc_percentile,
     breaks = seq(-0.1,1.1,0.1),
     labels = c(paste0('<',seq(0,100,10),'%'),'>100%')))
 
@@ -1170,12 +1170,12 @@ glycogene_mouse_unknown.df <- merge(
   glycogene_mouse_unknown.df,
   compute_intersects(
     test_data = reshape2:::dcast(
-      test_data, 
-      gene ~ paste0(tissue,':',cell), 
+      test_data,
+      gene ~ paste0(tissue,':',cell),
       value.var = 'rel_diff'),
     reference_data = reshape2:::dcast(
-      reference_data, 
-      gene ~ paste0(sample_id,':',tissue,':',source), 
+      reference_data,
+      gene ~ paste0(sample_id,':',tissue,':',source),
       value.var = 'rel_diff'))$predicted_expression %>%
     tidyr::separate('subset', into = c('tissue', 'cell'), sep = ':') %>%
     dplyr::rename(bulk_percentile=percentile),
@@ -1188,7 +1188,7 @@ glycogene_mouse_unknown.df <- merge(
 
 glycogene_mouse_unknown.df$bulk_classification <- with(
   glycogene_mouse_unknown.df, cut.default(
-    bulk_percentile, 
+    bulk_percentile,
     breaks = seq(-0.1,1.1,0.1),
     labels = c(paste0('<',seq(0,100,10),'%'),'>100%')))
 
@@ -1219,8 +1219,8 @@ glycogene_mouse_cell.df <-
   glycogene_mouse.df %>% group_by(cell, gene) %>% summarize(
     organism = unique(organism),
     gene_ortholog = unique(gene_ortholog),
-    clr = mean(clr), 
-    pseudobulk = mean(pseudobulk), 
+    clr = mean(clr),
+    pseudobulk = mean(pseudobulk),
     samples = sum(samples),
     rel_diff = mean(rel_diff))
 
@@ -1251,11 +1251,11 @@ glycogene_mouse_cell.df$threshold <- NULL
 
 ```{r}
 glycogene_mouse_cell.df$`status5E-03` <- with(
-  glycogene_mouse_cell.df, 
+  glycogene_mouse_cell.df,
   addNA(factor(
     ifelse(
-      pvalue > 5E-03, 'unpredictable', 
-      ifelse(pseudobulk > cutoff.int, 'expressed', 'unexpressed')), 
+      pvalue > 5E-03, 'unpredictable',
+      ifelse(pseudobulk > cutoff.int, 'expressed', 'unexpressed')),
     levels = rev(c('unexpressed','unpredictable','expressed')))))
 ```
 
@@ -1290,9 +1290,9 @@ glycogene_mouse_cell.df$pseudopresence.pred_sd <- with(
   round(pseudopresence.pred_sd, 2))
 
 glycogene_mouse_cell.df <- tidyr::unite(
-  glycogene_mouse_cell.df, 
-  'pseudopresence.expected', 
-  pseudopresence.pred_mu, 
+  glycogene_mouse_cell.df,
+  'pseudopresence.expected',
+  pseudopresence.pred_mu,
   pseudopresence.pred_sd,
   sep = '+/-')
 
@@ -1314,12 +1314,12 @@ glycogene_mouse_cell.df <- merge(
   rename(
     compute_intersects(
       test_data = reshape2:::dcast(
-        test_data, 
-        gene ~ cell, 
+        test_data,
+        gene ~ cell,
         value.var = 'rel_diff'),
       reference_data = reshape2:::dcast(
-        reference_data, 
-        gene ~ cell, 
+        reference_data,
+        gene ~ cell,
         value.var = 'rel_diff'))$predicted_expression,
     cell=subset, sc_percentile=percentile),
   by = c('cell','gene'),
@@ -1331,7 +1331,7 @@ glycogene_mouse_cell.df <- merge(
 
 glycogene_mouse_cell.df$sc_classification <- with(
   glycogene_mouse_cell.df, cut.default(
-    sc_percentile, 
+    sc_percentile,
     breaks = seq(-0.1,1.1,0.1),
     labels = c(paste0('<',seq(0,100,10),'%'),'>100%')))
 
@@ -1357,12 +1357,12 @@ glycogene_mouse_cell.df <- merge(
   rename(
     compute_intersects(
       test_data = reshape2:::dcast(
-        test_data, 
-        gene ~ cell, 
+        test_data,
+        gene ~ cell,
         value.var = 'rel_diff'),
       reference_data = reshape2:::dcast(
-        bulk, 
-        gene ~ paste0(sample_id,':',tissue,':',source), 
+        bulk,
+        gene ~ paste0(sample_id,':',tissue,':',source),
         value.var = 'rel_diff'))$predicted_expression,
     cell=subset, bulk_percentile=percentile),
   by = c('cell','gene'),
@@ -1374,7 +1374,7 @@ glycogene_mouse_cell.df <- merge(
 
 glycogene_mouse_cell.df$bulk_classification <- with(
   glycogene_mouse_cell.df, cut.default(
-    bulk_percentile, 
+    bulk_percentile,
     breaks = seq(-0.1,1.1,0.1),
     labels = c(paste0('<',seq(0,100,10),'%'),'>100%')))
 
@@ -1385,7 +1385,7 @@ glycogene_mouse_cell.df$bulk_classification <- with(
 ```{r}
 
 glycogene_mouse.df <- dplyr::rename(
-  glycogene_mouse.df, 
+  glycogene_mouse.df,
   `gene` = gene_ortholog,
   `gene ortholog` = gene,
   `# of cells` = samples,
@@ -1404,7 +1404,7 @@ glycogene_mouse.df <- dplyr::rename(
 ```{r}
 
 glycogene_mouse_cell.df <- dplyr::rename(
-  glycogene_mouse_cell.df, 
+  glycogene_mouse_cell.df,
   `gene` = gene_ortholog,
   `gene ortholog` = gene,
   `# of cells` = samples,
@@ -1469,7 +1469,7 @@ glycogene_mouse_cell.df <- dplyr::select(
 
 ```
 
-# computing dynamic ranges 
+# computing dynamic ranges
 
 ### for GTEx samples
 
@@ -1479,7 +1479,7 @@ GTEx_ranges <-
   compute_ranges(
     reference_data = reshape2:::dcast(
       GTEx_bulk,
-      gene ~ paste0(sample_id,':',tissue), 
+      gene ~ paste0(sample_id,':',tissue),
       value.var = 'rel_diff'))
 
 ```
@@ -1488,11 +1488,11 @@ GTEx_ranges <-
 
 ```{r}
 
-TCGA_ranges <- 
+TCGA_ranges <-
   compute_ranges(
     reference_data = reshape2:::dcast(
-      TCGA_bulk, 
-      gene ~ paste0(sample_id,':',tissue), 
+      TCGA_bulk,
+      gene ~ paste0(sample_id,':',tissue),
       value.var = 'rel_diff'))
 
 ```
@@ -1501,11 +1501,11 @@ TCGA_ranges <-
 
 ```{r}
 
-bulk_ranges <- 
+bulk_ranges <-
   compute_ranges(
     reference_data = reshape2:::dcast(
-      bulk, 
-      gene ~ paste0(sample_id,':',tissue,':',source), 
+      bulk,
+      gene ~ paste0(sample_id,':',tissue,':',source),
       value.var = 'rel_diff'))
 
 ```
@@ -1517,57 +1517,57 @@ bulk_ranges <-
 tabula_sapiens_ranges <-
   compute_ranges(
     reshape2:::dcast(
-      glycogene_human.df, 
-      gene ~ paste0(tissue,':',cell), 
+      glycogene_human.df,
+      gene ~ paste0(tissue,':',cell),
       value.var = 'seg normalised'))
 
 ```
 
-#### for Panglao Muris known 
+#### for Panglao Muris known
 
 ```{r}
 
-panglao_musculus_known_ranges <- 
+panglao_musculus_known_ranges <-
   compute_ranges(
     reshape2:::dcast(
       subset(glycogene_mouse.df, cell != 'Unknown'),
       gene ~ paste0(tissue,':',cell),
       value.var = 'seg normalised'))
-    # value.var = 'rel_diff)) 
+    # value.var = 'rel_diff))
 
 ```
 
-#### for Panglao Muris unknown 
+#### for Panglao Muris unknown
 
 ```{r}
 
-panglao_musculus_unknown_ranges <- 
+panglao_musculus_unknown_ranges <-
   compute_ranges(
     reshape2:::dcast(
       subset(glycogene_mouse.df, cell == 'Unknown'),
       gene ~ paste0(tissue,':',cell),
       value.var = 'seg normalised'))
-    # value.var = 'rel_diff)) 
+    # value.var = 'rel_diff))
 
 ```
 
-#### for Panglao Muris 
+#### for Panglao Muris
 
 ```{r}
 
-panglao_musculus_ranges <- 
+panglao_musculus_ranges <-
   compute_ranges(
     reshape2:::dcast(
       glycogene_mouse.df,
       gene ~ paste0(tissue,':',cell),
       value.var = 'seg normalised'))
-    # value.var = 'rel_diff)) 
+    # value.var = 'rel_diff))
 
 ```
 
 ```{r}
 
-glycopacity_internal_data <- 
+glycopacity_internal_data <-
   list(
     bulk_ranges = bulk_ranges,
     TCGA_ranges = TCGA_ranges,
@@ -1627,14 +1627,14 @@ saveRDS(glycogene_mouse_cell.df, 'glycogene_mouse_pseudobulkpresence_clr_seg_cel
 
 glycogene.df <- plyr::rbind.fill(glycogene_human.df, glycogene_mouse.df)
 glycogene_cell.df <- plyr::rbind.fill(glycogene_human_cell.df, glycogene_mouse_cell.df)
-  
+
 ```
 
 ```{r}
 
 writexl::write_xlsx(
   x = list(
-    by_tissue_cell = glycogene_human.df, 
+    by_tissue_cell = glycogene_human.df,
     by_cell = glycogene_human_cell.df),
   path = 'glycogene_human_pseudobulkpresence_clr_seg.xlsx')
 
@@ -1644,7 +1644,7 @@ writexl::write_xlsx(
 
 writexl::write_xlsx(
   x = list(
-    by_tissue_cell = glycogene_mouse.df, 
+    by_tissue_cell = glycogene_mouse.df,
     by_cell = glycogene_mouse_cell.df),
   path = 'glycogene_mouse_pseudobulkpresence_clr_seg.xlsx')
 
@@ -1654,7 +1654,7 @@ writexl::write_xlsx(
 
 writexl::write_xlsx(
   x = list(
-    by_tissue_cell = glycogene.df, 
+    by_tissue_cell = glycogene.df,
     by_cell = glycogene_cell.df),
   path = 'glycogene_pseudobulkpresence_clr_seg.xlsx')
 

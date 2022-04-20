@@ -1,32 +1,39 @@
-```{r}
+
+# reading in human pseudopresence tsv files
+
+```{r load_human_tsv}
 if(!file.exists("alldata_human_pseudopresence.Rds")){
   tsv = list.files(path = '../hsap_samples_tabuladb/', pattern = 'tsv.gz', recursive = T)
   raw_alldata = sapply(paste('../hsap_samples_tabuladb/', tsv, sep = ''), function(x) { read.delim(gzfile(x), check.names = F) })
 }
 ```
 
-```{r}
+# relabing human clusters
+
+```{r relabel_human_tsv}
 if ('raw_alldata' %in% ls()) {
   fixed = sapply(1:length(raw_alldata),function(x) {
-    
+
     genes <- raw_alldata[[x]]$gene
     pseudopresence.mat <- as.matrix.data.frame(raw_alldata[[x]][,3:ncol(raw_alldata[[x]])])
     rownames(pseudopresence.mat) <- genes
-    
+
     newids <- colnames(pseudopresence.mat)
     tissue = gsub('^TS_(.*)_pseudopresence.*$', '\\1', basename(tsv[[x]]))
     newids = gsub(paste0(tissue,'_'), '', x = newids)
     newids = paste(tissue,newids,sep=':')
-    
+
     colnames(pseudopresence.mat) <- newids
-    
+
     pseudopresence.mat <- t.default(pseudopresence.mat)
     pseudopresence.mat
   })
 }
 ```
 
-```{r}
+# concatenating tsv files
+
+```{r concat_human_tsv}
 if ('fixed' %in% ls()) {
   alldata = do.call(function(...) {
     tmp <- plyr::rbind.fill.matrix(...)
