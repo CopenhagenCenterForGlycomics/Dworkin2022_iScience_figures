@@ -239,7 +239,7 @@ remove(tissue_results_tcga)
 remove(rse_gene)
 ```
 
-# loading gtex
+# loading recount2 gtex
 
 ```{r load_gtex}
 load('../../input/gtex/rse_gene_gtex.Rdata')

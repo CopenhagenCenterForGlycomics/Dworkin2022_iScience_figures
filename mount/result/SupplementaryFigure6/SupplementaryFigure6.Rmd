@@ -79,9 +79,20 @@ file.remove('tissue_results_log_tcga_perHouseKeepingGene.Rds')
 ```
 
 ```{r}
+file.copy('../../preprocess/generate_bulk_data/seg_lookup.Rds', 'seg_lookup.Rds')
+seg_lookup = unique(names(readRDS('seg_lookup.Rds')))
+file.remove('seg_lookup.Rds')
+```
+
+```{r}
 tissue_results_all = rbind(
   cbind(tissue_results, source='gtex'),
   cbind(tissue_results_tcga, source='tcga'))
+
+tissue_results_all = 
+  tissue_results_all[
+    with(tissue_results_all,
+         !(gene %in% seg_lookup)),]
 
 remove(tissue_results)
 remove(tissue_results_tcga)
@@ -133,7 +144,7 @@ ggplot() +
     paste(
       "Mean relative expression of ",
       length(unique(compared_means$gene)),
-      " GTfs to DPAGT1, correlation=",
+      " GTfs to each SEG, correlation=",
       round(cor(compared_means$rel_diff.tcga, compared_means$rel_diff.gtex), digits=2),
       sep="")) +
   ylab("TCGA mean expression") +
@@ -159,9 +170,20 @@ file.remove('tissue_results_log_tcga.Rds')
 ```
 
 ```{r}
+file.copy('../../preprocess/generate_bulk_data/seg_lookup.Rds', 'seg_lookup.Rds')
+seg_lookup = unique(names(readRDS('seg_lookup.Rds')))
+file.remove('seg_lookup.Rds')
+```
+
+```{r}
 tissue_results_all = rbind(
   cbind(tissue_results, source='gtex'),
   cbind(tissue_results_tcga, source='tcga'))
+
+tissue_results_all = 
+  tissue_results_all[
+    with(tissue_results_all,
+         !(gene %in% seg_lookup)),]
 
 remove(tissue_results)
 remove(tissue_results_tcga)
@@ -221,7 +243,7 @@ ggplot() +
     paste(
       "Mean relative expression of ",
       length(unique(compared_means$gene)),
-      " GTfs to DPAGT1, correlation=",
+      " GTfs to all SEGs, correlation=",
       round(cor(compared_means$mean.tissue.rel_diff.tcga, compared_means$mean.tissue.rel_diff.gtex), digits=2),
       sep="")) +
   ylab("TCGA mean expression") +
