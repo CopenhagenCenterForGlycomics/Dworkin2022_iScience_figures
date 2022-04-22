@@ -290,7 +290,7 @@ tissue_results = lapply(all_tissues, function(tissue) {
 tissue_results = do.call(rbind, tissue_results)
 
 saveRDS(tissue_results,file = 'tissue_results_log.Rds')
-remove(tissue_result)
+remove(tissue_results)
 ```
 
 # removing gtex

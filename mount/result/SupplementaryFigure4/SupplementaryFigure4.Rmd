@@ -122,7 +122,7 @@ plotter.unit_redux_w_simulation_table <- function(data.list, ...) {
     correlation.df <-
       data.frame(
         cluster_size = c(86,215,430),
-        `R2_(100_samples)` = paste(
+        `Spearmans R (100_samples)` = paste(
           format(x = sapply(correlation.list, mean), digits = 3),
           ' +/- ',
           format(x = sapply(correlation.list, sd), digits = 1),
