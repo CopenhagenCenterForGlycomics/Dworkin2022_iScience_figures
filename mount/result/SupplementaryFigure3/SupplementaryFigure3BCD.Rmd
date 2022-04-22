@@ -5,6 +5,7 @@ library(ggrepel)
 library(dplyr)
 library(ggpubr)
 library(matrixStats)
+library(cowplot)
 ```
 
 ```{r}
@@ -38,9 +39,8 @@ file.copy('../../preprocess/generate_single_cell_data/pseudobulk_log_seg_norm.Rd
 pseudobulk_rel_diff = readRDS('pseudobulk_log_seg_norm.Rds')
 file.remove('pseudobulk_log_seg_norm.Rds')
 
-message("Loading up Pseudobulks from ",attributes(pseudobulk_rel_diff)$repo," revision ",attributes(pseudobulk_rel_diff)$revision)
 cutoffs=attributes(pseudobulk_rel_diff)$cutoffs
-median_cutoff=median(cutoffs)
+median_cutoff= median(cutoffs)
 pseudobulk_rel_diff$is_unknown=grepl('Unknown',pseudobulk_rel_diff$tissue)
 pseudobulk_rel_diff=subset(pseudobulk_rel_diff, !(gene %in% segs))
 ```
