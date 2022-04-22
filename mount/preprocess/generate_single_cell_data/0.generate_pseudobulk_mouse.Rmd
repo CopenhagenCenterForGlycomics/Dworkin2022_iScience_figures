@@ -19,8 +19,9 @@ if(!file.exists("alldata_mouse.Rds")){
 if ('raw_alldata' %in% ls()) {
 fixed = sapply(1:length(raw_alldata),function(x) {
   srs_names = sapply(sapply(basename(rds[x]), strsplit, '_'), function(x) grep('^SR',x,value=T) ,simplify = F)
+  print(srs_names)
   tissue = attributes(raw_alldata[[x]])$tissue
-  newids = paste(srs_names[[x]][2],tissue,dimnames(raw_alldata[[x]])[[1]],sep=':')
+  newids = paste(srs_names[[1]][2],tissue,dimnames(raw_alldata[[x]])[[1]],sep=':')
   newids = paste(ifelse(attributes(raw_alldata[[x]])$clustersize < 200, 'SMALL_','' ),newids,sep='')
   dimnames(raw_alldata[[x]]) <- list(newids, dimnames(raw_alldata[[x]])[[2]])
   attributes(raw_alldata[[x]])$sizes <- setNames(attributes(raw_alldata[[x]])$clustersize,rownames(raw_alldata[[x]]))
